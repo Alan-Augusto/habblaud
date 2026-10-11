@@ -4175,6 +4175,32 @@
   }
 }
 
+/* Celulares estreitos (até 410 px): marca + 7 botões ocupam a primeira linha inteira, então os contadores descem para a
+   linha dos cartões. Sem isso os botões da direita pulam para uma linha própria e a barra passa da altura fixa. */
+@media (max-width: 410px) {
+  .ui-counters {
+    order: 9;
+    margin-left: 0;
+  }
+
+  .ui-counters:has(.ui-counter--waiting:not(:disabled)) ~ .ui-topbar__right {
+    margin-left: auto;
+  }
+
+  .ui-usage {
+    order: 10;
+    flex: 1 1 60%;
+  }
+}
+
+/* Celulares de 320 px: com os botões de 32 px a primeira linha (marca + 7 botões) não cabe. */
+@media (max-width: 340px) {
+  .ui-topbar__right .ui-icon-btn {
+    width: 28px;
+    height: 28px;
+  }
+}
+
 /* ------------------------------------------------------------------ movimento reduzido */
 
 @media (prefers-reduced-motion: reduce) {
