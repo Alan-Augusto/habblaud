@@ -38,8 +38,9 @@ services:
       HABBLAUD_CODEX: ${HABBLAUD_CODEX:-}
     # Endurecimento: sistema de arquivos só leitura (exceto /data e /tmp), sem capabilities extras.
     read_only: true
+    # /tmp em memória, com teto: sem `size` o Docker deixa usar metade da RAM do host.
     tmpfs:
-      - /tmp
+      - /tmp:size=64m
     cap_drop:
       - ALL
     security_opt:
