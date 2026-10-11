@@ -13,6 +13,7 @@ import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVa
 import { FIVE_HOURS_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
 import { ICONS } from './icons';
 import { isCodex } from './provider';
+import { usageRowFits } from './usage-row';
 import { createAccountChip, createProviderTag, updateAccountChip, updateProviderTag } from './widgets';
 
 export const SOURCE_LABEL: Record<NonNullable<AccountInfo['usage']>['source'], string> = {
@@ -211,6 +212,8 @@ export class UsageCards {
       create: () => this.createCard(),
       update: (el, a) => this.updateCard(el, a),
     });
+    // A largura da janela mudou: refaz a conta de cabem-ou-não (ver fit()).
+    if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.fit()).observe(ctx.root);
   }
 
   render(): void {
@@ -218,6 +221,36 @@ export class UsageCards {
     this.list.sync(accounts);
     this.el.classList.toggle('is-empty', accounts.length === 0);
     setStyleVar(this.el, '--count', String(accounts.length));
+    this.fit();
+  }
+
+  /**
+   * Os cartões não cabem na linha da barra (muitas contas ou janela estreita)? Então vão para uma segunda linha
+   * (`has-usage-row` na raiz, regras em styles.css). Só conta os tamanhos mínimos, que não dependem de a fila estar
+   * numa linha ou na outra, então o resultado não oscila. No celular a barra já tem duas linhas (bloco próprio do CSS).
+   */
+  private fit(): void {
+    const bar = this.el.parentElement;
+    if (!bar) return;
+    if (window.matchMedia('(max-width: 600px)').matches) {
+      this.ctx.root.classList.remove('has-usage-row');
+      return;
+    }
+    const barStyle = getComputedStyle(bar);
+    const px = (v: string) => Number.parseFloat(v) || 0;
+    // Largura natural dos outros itens (scrollWidth): na linha única eles encolhem, na linha de baixo não, e a
+    // decisão não pode depender de em qual dos dois estados a barra está.
+    const others = [...bar.children]
+      .filter((c) => c !== this.el && getComputedStyle(c).display !== 'none')
+      .map((c) => Math.max((c as HTMLElement).offsetWidth, c.scrollWidth));
+    const fits = usageRowFits({
+      barWidth: bar.clientWidth - px(barStyle.paddingLeft) - px(barStyle.paddingRight),
+      others,
+      gap: px(barStyle.columnGap),
+      cardGap: px(getComputedStyle(this.el).columnGap),
+      cards: [...this.el.children].map((c) => px(getComputedStyle(c).minWidth)),
+    });
+    this.ctx.root.classList.toggle('has-usage-row', !fits);
   }
 
   private createCard(): HTMLElement {
