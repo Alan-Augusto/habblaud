@@ -4132,6 +4132,9 @@
     order: 10;
     flex: 1 0 100%;
     margin-left: 0;
+    /* Com 4 ou mais contas os cartões mantêm o mínimo de 128 px e não cabem: a fila rola (a dica já é fixa aqui). */
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .ui-usage-card {
