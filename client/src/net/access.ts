@@ -12,7 +12,7 @@ export function isLoopbackHostname(hostname: string): boolean {
 
 export function fallbackAccess(hostname: string): AccessInfo {
   const local = isLoopbackHostname(hostname);
-  return { remote: false, local, permissions: local, messages: local, terminal: local };
+  return { remote: false, local, permissions: local, messages: local, terminal: local, spawn: local };
 }
 
 function isAccessInfo(v: unknown): v is AccessInfo {
@@ -30,7 +30,7 @@ export async function loadAccess(fetchImpl: typeof fetch = fetch): Promise<Acces
     const res = await fetchImpl('/api/access', { credentials: 'same-origin', cache: 'no-store' });
     if (res.ok) {
       const body: unknown = await res.json();
-      if (isAccessInfo(body)) current = body;
+      if (isAccessInfo(body)) current = { ...body, spawn: (body as { spawn?: unknown }).spawn === true };
     }
   } catch {
     // fica a regra antiga (fallbackAccess)

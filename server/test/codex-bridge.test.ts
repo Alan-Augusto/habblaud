@@ -6,7 +6,8 @@ import { mkdirSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkMessage, httpPost, parseArgs, round } from '../../scripts/codex-bridge';
+import { checkMessage, httpPost, parseArgs, round, spawnRound, type Post } from '../../scripts/codex-bridge';
+import { spawnUrl } from '../spawn/spawn';
 import { AccountsService } from '../accounts/service';
 import { createApiHandler } from '../http/app';
 import { createRequestGuard } from '../http/guard';
@@ -138,5 +139,28 @@ describe('rotas do auxiliar do Codex', () => {
     expect(parseArgs(['-h'], {})).toBe('help');
     expect(() => parseArgs(['--port', 'x'], {})).toThrow(/--port/);
     expect(() => parseArgs(['--xyz'], {})).toThrow(/desconhecida/);
+  });
+});
+
+describe('spawnRound (agentes novos pelo auxiliar)', () => {
+  it('monta o link ele mesmo, recusa pasta que não existe e confirma tudo numa chamada', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const post: Post = async (path, body) => {
+      calls.push([path, body]);
+      if (path === '/api/host/spawn/poll') {
+        return { status: 200, json: { spawns: [{ id: 'a', folder: '/ok', prompt: 'p', url: 'https://evil.example' }, { id: 'b', folder: '/sumiu', prompt: '' }, { folder: '/sem-id' }] } };
+      }
+      return { status: 200, json: { ok: true } };
+    };
+    const opened: string[] = [];
+    const r = await spawnRound(post, async (url) => (opened.push(url), { ok: true }), () => {}, (f) => (f === '/ok' ? undefined : 'pasta não encontrada neste computador'));
+    expect(opened).toEqual([spawnUrl({ folder: '/ok', prompt: 'p' })]);
+    expect(r).toEqual({ state: 'ok', results: [{ id: 'a', ok: true }, { id: 'b', ok: false, error: 'pasta não encontrada neste computador' }] });
+    expect(calls[1]).toEqual(['/api/host/spawn/ack', { results: r.state === 'ok' ? r.results : [] }]);
+  });
+
+  it('Habblaud fora do ar ou recusando', async () => {
+    expect(await spawnRound(async () => null, async () => ({ ok: true }))).toEqual({ state: 'down' });
+    expect(await spawnRound(async () => ({ status: 403, json: { error: 'x' } }), async () => ({ ok: true }))).toEqual({ state: 'refused', status: 403 });
   });
 });

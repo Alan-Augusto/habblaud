@@ -371,6 +371,8 @@ export interface AccessInfo {
   permissions: boolean;
   messages: boolean;
   terminal: boolean;
+  /** Pode abrir agentes novos no app do Claude (POST /api/spawn). */
+  spawn: boolean;
 }
 
 export interface FeedItem {

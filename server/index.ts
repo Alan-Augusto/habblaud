@@ -36,6 +36,7 @@ import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
 import { createBuildReader } from './build';
 import { UpdateChecker } from './updates/checker';
+import { createOpener, SpawnService } from './spawn/spawn';
 
 const config = loadConfig();
 const startedAt = Date.now();
@@ -142,6 +143,8 @@ late.permissions = permissions;
 // fora do Docker o próprio servidor roda o comando (HABBLAUD_CODEX_BIN ou `codex` do PATH); no Docker, o auxiliar do
 // host (npm run codex:bridge).
 const codexBin = config.messages && !config.inDocker ? findCodexBin(process.env) : undefined;
+// Novo agente pelo escritório (abre o app do Claude): mesma trava das mensagens. No Docker, o auxiliar do host abre.
+const spawn = config.messages ? new SpawnService(config.inDocker ? {} : { opener: createOpener() }) : undefined;
 const messages = config.messages
   ? new MessageRegistry({
       office,
@@ -196,6 +199,7 @@ const api = createApiHandler({
   timeline: createTimelineHandler({ dir: timelineDir, recording: !!timeline }),
   permissions: permissions ? createPermissionRoutes(permissions) : undefined,
   messages: messages ? createMessageRoutes(messages) : undefined,
+  spawn,
   codexLive,
   stats,
   updates,

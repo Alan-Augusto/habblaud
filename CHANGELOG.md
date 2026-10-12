@@ -29,6 +29,11 @@ do meio (0.**3**.0).
 - **Mensagens para sessões do app desktop do Claude:** o plugin `habblaud-mensagens` só perguntava ao Habblaud
   quando a sessão tinha superfície, e as do app desktop (SDK por baixo) só têm enquanto estão na tela. Agora
   `CLAUDE_CODE_ENTRYPOINT=claude-desktop` também conta; `claude -p` e outros usos do SDK continuam de fora.
+- **Novo agente (botão + na barra do topo):** prepara uma sessão nova no app desktop do Claude, na pasta escolhida
+  (as salas do escritório vêm sugeridas) e com o pedido escrito, pelo link `claude://code/new`; ela começa com um
+  Enter no app. No modo Node o servidor abre o link; no Docker, o auxiliar do host (`npm run codex:bridge`, que agora
+  roda também sem o Codex) busca o pedido, confere a pasta e abre. Pelo celular, só com `spawn` em
+  `HABBLAUD_REMOTE_ALLOW`.
 
 ### Segurança
 

@@ -287,6 +287,8 @@ export const ICONS = {
     '#........#',
     '##########',
   ]),
+  /** Pessoa com um +: novo agente (o + sozinho já é o "aproximar" da câmera). */
+  newAgent: pixelIcon(['..##......', '.####.....', '.####...#.', '..##...###', '........#.', '.####.....', '######....', '######....']),
   logout: pixelIcon([
     '#####.....',
     '#...#.....',

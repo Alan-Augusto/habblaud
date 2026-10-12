@@ -1,5 +1,6 @@
 // Barra superior: marca, conexão, contadores, uso por conta e botões de controle.
 import { access, remoteLogout } from '../net/access';
+import { SpawnPanel } from './spawn';
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText, setTitle, setVariant } from './dom';
 import { formatDuration, formatInt } from './format';
@@ -44,6 +45,8 @@ export class TopBar implements UiComponent {
   private timelapseBtn: HTMLButtonElement;
   readonly settingsBtn: HTMLButtonElement;
   private readonly logoutBtn: HTMLButtonElement;
+  private readonly spawnBtn: HTMLButtonElement;
+  private readonly spawnPanel: SpawnPanel;
   /** Grupo dos botões de painéis (feed, configurações, ajuda); o histórico entra aqui (ui/index.ts). */
   readonly panelGroup: HTMLElement;
 
@@ -103,6 +106,11 @@ export class TopBar implements UiComponent {
     // Só na porta remota (celular com login): a porta local não tem login para encerrar.
     this.logoutBtn = iconButton(ICONS.logout, 'Sair (encerra o login deste aparelho)', () => void this.logout(), 'ui-btn-logout');
     this.logoutBtn.hidden = true;
+    this.spawnPanel = new SpawnPanel(ctx);
+    ctx.root.append(this.spawnPanel.el);
+    this.spawnBtn = iconButton(ICONS.newAgent, 'Novo agente: abre uma sessão no app do Claude', () => this.spawnPanel.toggle(this.spawnBtn), 'ui-btn-spawn');
+    this.spawnBtn.setAttribute('aria-haspopup', 'dialog');
+    this.spawnBtn.hidden = true;
     this.version = new VersionChip(ctx, this.settingsBtn);
     const viewGroup = h(
       'div',
@@ -114,6 +122,7 @@ export class TopBar implements UiComponent {
     const panelGroup = h(
       'div',
       { class: 'ui-btn-group', role: 'group', attrs: { 'aria-label': 'Painéis' } },
+      this.spawnBtn,
       this.timelapseBtn,
       this.feedBtn,
       this.settingsBtn,
@@ -203,6 +212,7 @@ export class TopBar implements UiComponent {
     this.usage.render();
     this.version.render();
     setHidden(this.logoutBtn, !access().remote);
+    setHidden(this.spawnBtn, !access().spawn || store.mock || store.replaying);
 
     this.sidebarBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('sidebar')));
     this.feedBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('feed')));

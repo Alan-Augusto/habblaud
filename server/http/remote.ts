@@ -28,9 +28,9 @@ import { dirname, join } from 'node:path';
 import { parsePasswordHash, verifyPassword, type PasswordHash } from '../remote/password';
 import { hostAllowed } from './guard';
 
-export type RemoteFeature = 'permissions' | 'messages' | 'terminal';
+export type RemoteFeature = 'permissions' | 'messages' | 'terminal' | 'spawn';
 
-const FEATURES: readonly RemoteFeature[] = ['permissions', 'messages', 'terminal'];
+const FEATURES: readonly RemoteFeature[] = ['permissions', 'messages', 'terminal', 'spawn'];
 
 export interface RemoteTls {
   dir: string;

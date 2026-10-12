@@ -14,6 +14,7 @@ import { handleSessionsRoute } from './sessions';
 import type { Hub } from './sse';
 import { handleStatsRoute } from './stats';
 import type { TerminalStreams } from './terminal';
+import type { SpawnService } from '../spawn/spawn';
 
 export interface ApiDeps {
   office: Office;
@@ -50,6 +51,8 @@ export interface ApiDeps {
    * não dependem da trava do terminal).
    */
   codexLive?: CodexLive;
+  /** Novo agente pelo escritório (/api/spawn e, para o auxiliar do host, /api/host/spawn/*; server/spawn/spawn.ts). */
+  spawn?: SpawnService;
   /** Renomeia a sala (POST /api/rooms/rename {id, name}; vazio volta ao padrão). Devolve o nome em uso, ou undefined se a sala não existe. */
   renameRoom?: (id: string, name: string) => string | undefined;
   /** Estatísticas do "Meu dia" (GET /api/stats, http/stats.ts). */
@@ -297,6 +300,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           permissions: !!deps.permissions && trusted(req, 'permissions'),
           messages: !!deps.messages && trusted(req, 'messages'),
           terminal: !!terminals && trusted(req, 'terminal'),
+          spawn: !!deps.spawn && trusted(req, 'spawn'),
         };
         sendJson(res, 200, access);
       }
@@ -377,6 +381,47 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
         sendJson(res, 403, { error: denied(req, 'eventos do Codex só são aceitos pelo próprio computador (http://localhost ou http://127.0.0.1)') });
       } else handleCodexEvent(req, res, { live: deps.codexLive, entries: () => accounts.entriesOf('codex') }).catch((err) => fail(res, err));
+      return true;
+    }
+    if (path === '/api/spawn' || path.startsWith('/api/spawn/')) {
+      // Abre uma sessão nova no app do Claude: roda código no computador, então a mesma trava das mensagens.
+      const spawn = deps.spawn;
+      if (!spawn) sendJson(res, 403, { error: 'novo agente pelo escritório desligado' });
+      else if (!trusted(req, 'spawn')) sendJson(res, 403, { error: denied(req, 'agentes novos só são abertos pelo próprio computador (http://localhost)') });
+      else if (path === '/api/spawn' && isRead) sendJson(res, 200, { available: spawn.available(), mode: spawn.mode() });
+      else if (path === '/api/spawn' && method === 'POST') {
+        readJson(req)
+          .then((body) => {
+            const r = spawn.submit(body);
+            if ('spawn' in r) return sendJson(res, 201, r.spawn);
+            sendJson(res, r.error === 'invalid' ? 400 : r.error === 'too-many' ? 429 : 409, { error: r.reason });
+          })
+          .catch((err) => fail(res, err));
+      } else if (path !== '/api/spawn' && isRead) {
+        const info = spawn.get(decodeURIComponent(path.slice('/api/spawn/'.length)));
+        if (info) sendJson(res, 200, info);
+        else sendJson(res, 404, { error: 'pedido desconhecido' });
+      } else methodNotAllowed(res, path === '/api/spawn' ? 'GET, POST' : 'GET');
+      return true;
+    }
+    if (path === '/api/host/spawn/poll' || path === '/api/host/spawn/ack') {
+      // Só o auxiliar do host, pela porta local (nunca pela remota); fora do Docker, só pelo loopback.
+      const spawn = deps.spawn;
+      if (method !== 'POST') methodNotAllowed(res, 'POST');
+      else if (!spawn) sendJson(res, 403, { error: 'novo agente pelo escritório desligado' });
+      else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, 'só o auxiliar do próprio computador') });
+      } else if (path === '/api/host/spawn/poll') {
+        req.resume();
+        sendJson(res, 200, { spawns: spawn.poll() });
+      } else {
+        readJson(req)
+          .then((body) => {
+            spawn.ack(body);
+            sendJson(res, 200, { ok: true });
+          })
+          .catch((err) => fail(res, err));
+      }
       return true;
     }
     if (isMessagesPath(path)) {

@@ -260,7 +260,8 @@ credenciais › Instalar certificado › Certificado de CA), conferindo a impres
 - **Endereço próprio** (ex.: `meuclaude.home`): entra no certificado, mas o celular só o encontra com uma entrada no
   DNS do roteador apontando para o IP do computador. O `<nome>.local` funciona sem configurar nada.
 - **O que o celular pode fazer:** por padrão, aprovar e recusar pedidos de permissão. `HABBLAUD_REMOTE_ALLOW` no
-  `.env` aceita `permissions`, `messages` e `terminal` (separados por vírgula) ou `none` (só ver).
+  `.env` aceita `permissions`, `messages`, `terminal` e `spawn` (abrir agentes novos no app do Claude), separados por
+  vírgula, ou `none` (só ver).
 - **Sessão:** 30 dias; trocar a senha (rodar o setup de novo) derruba todas. Depois de 5 senhas erradas seguidas, cada
   nova tentativa espera de 1 s até 5 min.
 - **IP mudou?** O `docker:up` refaz o certificado do servidor quando falta o IP novo ou quando faltam 30 dias para

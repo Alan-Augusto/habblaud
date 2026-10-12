@@ -17,6 +17,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isClaudeDir } from '../server/accounts/detect';
 import { createCodexQueueRunner, findCodexBin, THREAD_ID, type CodexQueueResult, type CodexQueueRunner } from '../server/messages/codex';
+import { createOpener, folderProblem, parseSpawn, spawnUrl, type Opener } from '../server/spawn/spawn';
 
 export const DEFAULT_PORT = 4747;
 /** Intervalo entre as rodadas. */
@@ -157,6 +158,44 @@ export async function round(post: Post, run: CodexQueueRunner, log: (line: strin
   return { state: 'ok', results };
 }
 
+/**
+ * Agentes novos pelo escritório: busca os pedidos (POST /api/host/spawn/poll), confere cada um (pasta que existe
+ * aqui), monta o link claude://code/new ele mesmo e abre o app do Claude; confirma em /api/host/spawn/ack. Nunca lança.
+ */
+export async function spawnRound(
+  post: Post,
+  open: Opener,
+  log: (line: string) => void = () => {},
+  problem: (folder: string) => string | undefined = folderProblem,
+): Promise<RoundResult> {
+  const polled = await post('/api/host/spawn/poll', {});
+  if (!polled) return { state: 'down' };
+  const list = rec(polled.json)?.spawns;
+  if (polled.status !== 200 || !Array.isArray(list)) return { state: 'refused', status: polled.status };
+  const results: BridgeResult[] = [];
+  for (const raw of list) {
+    const id = typeof rec(raw)?.id === 'string' ? (rec(raw)!.id as string) : '';
+    if (!id) continue;
+    const req = parseSpawn(raw);
+    const bad = 'error' in req ? req.error : problem(req.folder);
+    if (bad || 'error' in req) {
+      results.push({ id, ok: false, error: bad ?? 'pedido inválido' });
+      log(`✗ agente novo recusado: ${bad}`);
+      continue;
+    }
+    let r: { ok: boolean; error?: string };
+    try {
+      r = await open(spawnUrl(req));
+    } catch (err) {
+      r = { ok: false, error: String(err) };
+    }
+    results.push(r.ok ? { id, ok: true } : { id, ok: false, error: r.error });
+    log(r.ok ? `✓ agente novo aberto no app do Claude em ${req.folder}` : `✗ agente novo em ${req.folder}: ${r.error}`);
+  }
+  if (results.length) await post('/api/host/spawn/ack', { results });
+  return { state: 'ok', results };
+}
+
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed === 'help') {
@@ -164,14 +203,19 @@ async function main(): Promise<void> {
     return;
   }
   const bin = findCodexBin(process.env);
-  if (!bin) throw new FatalError('não achei o Codex: deixe o `codex` no PATH ou defina HABBLAUD_CODEX_BIN com o caminho do binário.');
-  const run = createCodexQueueRunner(bin);
+  const run = bin ? createCodexQueueRunner(bin) : undefined;
+  const open = createOpener();
   const post = httpPost(parsed.port);
   const log = (line: string) => console.log(`[codex-bridge] ${line}`);
-  log(`Entregando as mensagens do Habblaud (http://127.0.0.1:${parsed.port}) às sessões do Codex com ${bin}. Ctrl+C para parar.`);
+  log(
+    bin
+      ? `Entregando as mensagens do Habblaud (http://127.0.0.1:${parsed.port}) às sessões do Codex com ${bin}, e abrindo os agentes novos no app do Claude. Ctrl+C para parar.`
+      : `Sem o Codex (codex no PATH ou HABBLAUD_CODEX_BIN): só abro os agentes novos do Habblaud (http://127.0.0.1:${parsed.port}) no app do Claude. Ctrl+C para parar.`,
+  );
   let last = '';
   for (;;) {
-    const r = await round(post, run, log);
+    const spawned = await spawnRound(post, open, log);
+    const r = run ? await round(post, run, log) : spawned;
     const state =
       r.state === 'down'
         ? `Habblaud fora do ar em http://127.0.0.1:${parsed.port}; tentando de novo a cada ${POLL_MS / 1_000} s.`

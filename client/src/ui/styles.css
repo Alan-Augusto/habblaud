@@ -7592,6 +7592,33 @@ html.is-replay #world {
   font: inherit;
 }
 
+.ui-spawn__label {
+  display: block;
+  margin: 8px 0 4px;
+  font: 500 12.5px/1.2 var(--font-px);
+  color: var(--ui-muted);
+}
+
+.ui-spawn__prompt {
+  resize: vertical;
+  min-height: 84px;
+}
+
+.ui-spawn__go {
+  margin-top: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+.ui-spawn__status:empty {
+  display: none;
+}
+
+.ui-spawn__status.is-error,
+.ui-rename__hint.is-error {
+  color: var(--ui-danger, #ff8a8a);
+}
+
 .ui-rename__input:focus {
   outline: 2px solid var(--ui-accent);
   outline-offset: -1px;

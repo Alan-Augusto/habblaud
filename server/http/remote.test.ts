@@ -25,6 +25,7 @@ import {
 } from './remote';
 import { Hub } from './sse';
 import { hashPassword, parsePasswordHash } from '../remote/password';
+import { SpawnService } from '../spawn/spawn';
 
 setQuiet(true);
 
@@ -144,6 +145,7 @@ interface Harness {
   remoteBase: string;
   localBase: string;
   permissionCalls: string[];
+  spawn: SpawnService;
   close: () => Promise<void>;
 }
 
@@ -174,6 +176,7 @@ async function start(allow: RemoteFeature[] = ['permissions']): Promise<Harness>
   });
   hub.start();
   const permissionCalls: string[] = [];
+  const spawn = new SpawnService();
   const api = createApiHandler({
     office,
     hub,
@@ -182,6 +185,7 @@ async function start(allow: RemoteFeature[] = ['permissions']): Promise<Harness>
     version: '9.9.9',
     inDocker: true,
     terminal: true,
+    spawn,
     permissions: (req, res, path) => {
       req.resume();
       permissionCalls.push(`${isRemoteRequest(req) ? 'remote' : 'local'} ${req.method} ${path}`);
@@ -225,6 +229,7 @@ async function start(allow: RemoteFeature[] = ['permissions']): Promise<Harness>
     localBase: `http://127.0.0.1:${(local.address() as AddressInfo).port}`,
     remoteBase: `http://127.0.0.1:${(remote.address() as AddressInfo).port}`,
     permissionCalls,
+    spawn,
     close,
   };
 }
@@ -265,6 +270,32 @@ async function login(base: string): Promise<string> {
 }
 
 describe('porta remota', () => {
+  it('novo agente: só com spawn liberado no celular; o auxiliar do host nunca pela porta remota', async () => {
+    const s = await start(['permissions']);
+    const cookie = await login(s.remoteBase);
+    const body = { folder: '/Users/voce/projeto', prompt: 'oi' };
+    expect((await request(s.remoteBase, '/api/spawn', { method: 'POST', body, headers: { Cookie: cookie } })).status).toBe(403);
+    expect(JSON.parse((await request(s.remoteBase, '/api/access', { headers: { Cookie: cookie } })).body).spawn).toBe(false);
+
+    const t = await start(['permissions', 'spawn']);
+    const c2 = await login(t.remoteBase);
+    expect(JSON.parse((await request(t.remoteBase, '/api/access', { headers: { Cookie: c2 } })).body).spawn).toBe(true);
+    // Sem o auxiliar do host rodando: 409 com o motivo.
+    const off = await request(t.remoteBase, '/api/spawn', { method: 'POST', body, headers: { Cookie: c2 } });
+    expect(off.status).toBe(409);
+    expect(off.body).toMatch(/codex:bridge/);
+    expect((await request(t.remoteBase, '/api/host/spawn/poll', { method: 'POST', body: {}, headers: { Cookie: c2 } })).status).toBe(403);
+    // O auxiliar (porta local) passa: o celular pede, o auxiliar busca, abre e confirma.
+    expect(JSON.parse((await request(t.localBase, '/api/host/spawn/poll', { method: 'POST', body: {} })).body)).toEqual({ spawns: [] });
+    const made = await request(t.remoteBase, '/api/spawn', { method: 'POST', body, headers: { Cookie: c2 } });
+    expect(made.status).toBe(201);
+    const { id } = JSON.parse(made.body);
+    expect(JSON.parse((await request(t.localBase, '/api/host/spawn/poll', { method: 'POST', body: {} })).body).spawns).toEqual([{ id, ...body }]);
+    expect((await request(t.localBase, '/api/host/spawn/ack', { method: 'POST', body: { results: [{ id, ok: true }] } })).status).toBe(200);
+    expect(JSON.parse((await request(t.remoteBase, `/api/spawn/${id}`, { headers: { Cookie: c2 } })).body).status).toBe('opened');
+    expect((await request(t.localBase, '/api/spawn', { method: 'POST', body: { folder: 'relativa', prompt: '' } })).status).toBe(400);
+  });
+
   it('Sair: apaga o cookie e o mesmo token deixa de valer (mesmo guardado numa cópia)', async () => {
     const s = await start();
     const cookie = await login(s.remoteBase);
@@ -415,12 +446,14 @@ describe('GET /api/access (o que a página pode fazer)', () => {
       permissions: true,
       messages: false,
       terminal: false,
+      spawn: false,
     });
-    expect(JSON.parse((await request(h.localBase, '/api/access')).body)).toEqual({ remote: false, local: true, permissions: true, messages: true, terminal: false });
+    expect(JSON.parse((await request(h.localBase, '/api/access')).body)).toEqual({ remote: false, local: true, permissions: true, messages: true, terminal: false, spawn: true });
     expect(JSON.parse((await request(h.localBase, '/api/access', { headers: { Host: '192.168.1.5:4747' } })).body)).toMatchObject({
       local: false,
       permissions: false,
       messages: false,
+      spawn: false,
     });
     expect((await request(h.remoteBase, '/api/access')).status).toBe(401);
   });
