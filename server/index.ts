@@ -42,6 +42,10 @@ import { recentFolders } from './spawn/folders';
 import { isDemoId } from '../shared/timeline';
 import { DictationService } from './dictation/dictation';
 import { createWhisperTranscriber, findWhisper } from './dictation/whisper';
+import { DeliveryIndex } from './deliveries/deliveries';
+import { FileFetcher } from './deliveries/fetcher';
+import { PushService } from './push/webpush';
+import { PushAnnouncer } from './push/announcer';
 
 const config = loadConfig();
 const startedAt = Date.now();
@@ -125,6 +129,38 @@ const history = config.terminal
   ? new HistorySet([new SessionHistory({ accounts: () => accounts.entries(), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) })])
   : undefined;
 if (history && codex) history.add(new CodexHistory({ accounts: () => accounts.entriesOf('codex'), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) }));
+// Entregas: o fim de cada pedido, lido dos transcripts do histórico (mesma trava do terminal). Os arquivos entregues
+// são lidos aqui (Node, ou pasta de conta montada no Docker) ou pelo auxiliar do host.
+const deliveries = history
+  ? new DeliveryIndex({
+      sessions: () => history.list(),
+      resolve: (account, sessionId) => {
+        const r = history.resolve(account, sessionId);
+        return 'path' in r ? r : undefined;
+      },
+      isBusy: (id) => {
+        const st = office.list().find((a) => a.id === id)?.status;
+        return st === 'working' || st === 'waiting' || st === 'shell';
+      },
+      agentName: (id) => office.list().find((a) => a.id === id)?.name,
+    })
+  : undefined;
+const deliveryFiles = deliveries
+  ? new FileFetcher({
+      direct: !config.inDocker,
+      mapHostPath: (p) => {
+        for (const e of accounts.entries()) {
+          const host = e.detected.configDir.replace(/\/+$/, '');
+          if (host && p.startsWith(`${host}/`)) return `${e.dir.replace(/\/+$/, '')}${p.slice(host.length)}`;
+        }
+        return undefined;
+      },
+    })
+  : undefined;
+// Avisos no celular (Web Push): "precisa de você" e entregas novas, para os aparelhos inscritos.
+const push = new PushService(join(config.dataDir, 'push.json'));
+const announcer = new PushAnnouncer({ push, deliveries });
+hub.onNotice((n) => announcer.onNotice(n));
 // Linha do tempo do timelapse: grava cada snapshot novo (com throttle) em <dataDir>/timeline.
 const timelineDir = join(config.dataDir, TIMELINE_DIR);
 const timeline = config.timeline ? new TimelineRecorder({ dir: timelineDir }) : undefined;
@@ -213,6 +249,9 @@ const api = createApiHandler({
   spawn,
   attachments,
   dictation,
+  deliveries,
+  files: deliveryFiles,
+  push,
   spawnFolders: async () => {
     const snap = hub.current();
     const last = new Map<string, number>();

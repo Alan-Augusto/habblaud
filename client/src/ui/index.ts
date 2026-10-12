@@ -19,6 +19,8 @@ import { Drawer } from './drawer';
 import { FeedPanel } from './feed';
 import { HelpDialog } from './help';
 import { HistoryPopover } from './history';
+import { Deliveries } from './deliveries';
+import { onPushOpen, serviceWorker } from './push';
 import { HoverTip } from './hovertip';
 import { hasRunningShells } from './model';
 import { hasCodexPermission } from './provider';
@@ -154,6 +156,30 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   // Histórico de sessões (terminal): botão no grupo dos painéis da barra superior.
   const history = new HistoryPopover(ctx, terminal);
   topbar.panelGroup.prepend(history.button);
+  // Entregas: o que os agentes terminaram (primeiro botão do grupo: é o que mais se usa pelo celular).
+  const deliveries = new Deliveries(ctx, terminal);
+  topbar.panelGroup.prepend(deliveries.button);
+  // Links dos avisos no celular (?agent= / ?delivery=): no carregamento e com o app já aberto (service worker).
+  const openLink = (url: URL) => {
+    const agent = url.searchParams.get('agent');
+    const delivery = url.searchParams.get('delivery');
+    if (!agent && !delivery) return;
+    const go = () => {
+      if (delivery) void deliveries.openById(delivery);
+      else if (agent && ctx.agent(agent)) ctx.select({ type: 'agent', id: agent }, { focus: true });
+    };
+    if (store.snapshot) go();
+    else {
+      const off = store.on('snapshot', () => {
+        off();
+        setTimeout(go, 300);
+      });
+    }
+    if (url.search && location.search === url.search) window.history.replaceState(null, '', location.pathname);
+  };
+  openLink(new URL(location.href));
+  onPushOpen(openLink);
+  void serviceWorker();
   drawer = new Drawer(ctx, terminal);
   const feed = new FeedPanel(ctx);
   const toasts = new Toasts(ctx);
@@ -175,7 +201,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   const scrim = h('div', { class: 'ui-scrim', attrs: { 'aria-hidden': 'true' }, on: { click: () => ctx.togglePanel('sidebar', false) } });
 
   root.classList.add('ui-root');
-  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, tip.el, settings.el, history.el, help.el, renamer.el, live, splash.el);
+  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, tip.el, settings.el, history.el, deliveries.el, help.el, renamer.el, live, splash.el);
   area = new FreeArea(world, { root, topbar: topbar.el, sidebar: sidebar.el, drawer: drawer.el, feed: feed.el }, () => ({
     sidebar: panels.sidebar,
     feed: panels.feed,
@@ -184,7 +210,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   }));
   drawer.onLayoutChange = () => applyLayout();
 
-  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, history, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
+  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, history, deliveries, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
 
   // ---------------------------------------------------------------- renderização agrupada por quadro
   let rafId = 0;

@@ -525,6 +525,58 @@ export interface RecentSession {
 }
 
 /** Resposta de GET /api/sessions/recent: da atividade mais recente para a mais antiga. */
+// ------------------------------------------------------------------ entregas
+
+/** Tipo de um anexo de entrega, para escolher o visualizador. */
+export type DeliveryAttachmentKind = 'image' | 'pdf' | 'video' | 'page' | 'text' | 'file';
+
+/** Arquivo que o agente entregou (SendUserFile, link na resposta) ou uma tela capturada no fim do trabalho. */
+export interface DeliveryAttachment {
+  /** Id opaco para GET /api/deliveries/file/:id (nunca o caminho). */
+  id: string;
+  name: string;
+  kind: DeliveryAttachmentKind;
+  /** Legenda do agente (SendUserFile) ou "Tela capturada". */
+  caption?: string;
+  /** Captura de tela que veio dentro da conversa (não é um arquivo do computador). */
+  capture?: boolean;
+}
+
+/**
+ * Uma entrega: o fim de um pedido em que o agente trabalhou (usou ferramentas) e respondeu. Montada do transcript
+ * (server/deliveries/deliveries.ts), do jeito que um BA receberia: manchete, resumo, pedido e anexos.
+ */
+export interface DeliveryInfo {
+  /** "<conta>:<sessão>:<entrada do pedido>". */
+  id: string;
+  account: string;
+  provider?: Provider;
+  sessionId: string;
+  /** Agente ainda no escritório (para o avatar e o "abrir terminal"). */
+  agentId?: string;
+  /** Nome do agente (o do escritório) ou o título da sessão. */
+  agentName?: string;
+  project?: string;
+  /** O que foi pedido (uma linha). */
+  request: string;
+  /** Primeira frase da resposta, sem markdown. */
+  headline: string;
+  /** Parágrafo em linguagem simples (o último da resposta), quando há. */
+  summary?: string;
+  /** A resposta inteira (markdown). */
+  text: string;
+  startedAt: number;
+  finishedAt: number;
+  /** Ferramentas usadas e arquivos alterados no pedido. */
+  tools: number;
+  edited: number;
+  attachments: DeliveryAttachment[];
+}
+
+export interface DeliveriesResponse {
+  deliveries: DeliveryInfo[];
+}
+
 export interface RecentSessionsResponse {
   sessions: RecentSession[];
   /** Janela da listagem (dias) e máximo de sessões. */

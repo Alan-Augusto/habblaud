@@ -241,6 +241,9 @@ export class LoginThrottle {
 
 /** Requisições que chegaram pela porta remota e passaram pelo login. */
 const remoteRequests = new WeakSet<IncomingMessage>();
+/** Arquivos que a porta remota serve sem login: manifesto, ícones e o service worker (que o navegador relê sozinho,
+ *  mesmo com a sessão vencida, e não aceita redirecionamento). Nada da API nem do escritório. */
+const PUBLIC_STATIC = /^\/(manifest\.webmanifest|sw\.js|assets\/brand\/[\w.@-]+\.png)$/;
 
 export function isRemoteRequest(req: IncomingMessage): boolean {
   return remoteRequests.has(req);
@@ -284,6 +287,12 @@ export function loginPage(opts: { caDownload: boolean }): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>Habblaud · entrar</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Habblaud">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -453,6 +462,11 @@ export function createRemoteGate(deps: RemoteGateDeps): (req: IncomingMessage, r
     }
 
     if (authed) {
+      remoteRequests.add(req);
+      return false;
+    }
+    // Ícone e manifesto do app (Tela de Início): públicos, o celular os busca antes do login (e sem o cookie).
+    if ((method === 'GET' || method === 'HEAD') && PUBLIC_STATIC.test(path)) {
       remoteRequests.add(req);
       return false;
     }

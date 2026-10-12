@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkMessage, dictationRound, httpPost, parseArgs, round, spawnRound, type Post } from '../../scripts/codex-bridge';
+import { checkMessage, dictationRound, filesRound, httpPost, parseArgs, round, spawnRound, type Post } from '../../scripts/codex-bridge';
 import { spawnUrl } from '../spawn/spawn';
 import { AccountsService } from '../accounts/service';
 import { createApiHandler } from '../http/app';
@@ -176,6 +176,20 @@ describe('spawnRound com anexos e dictationRound', () => {
     expect(r).toEqual({ state: 'ok', results: [{ id: 'd1', ok: true, text: 'crie um agente', lang: 'pt' }, { id: 'd2', ok: false, error: 'o Whisper falhou (x)' }] });
     expect(calls[1][0]).toBe('/api/host/dictation/ack');
     expect(await dictationRound(async () => null, async () => ({ text: '', lang: '' }))).toEqual({ state: 'down' });
+  });
+});
+
+describe('filesRound (arquivos das entregas pelo auxiliar)', () => {
+  it('lê só o que passa na checagem e devolve base64; recusa com motivo', async () => {
+    let acked: unknown;
+    const post: Post = async (path, body) => {
+      if (path === '/api/host/files/poll') return { status: 200, json: { files: [{ id: 'f1', path: '/ok/a.png' }, { id: 'f2', path: '/Users/a/.ssh/id.png' }] } };
+      acked = body;
+      return { status: 200, json: { ok: true } };
+    };
+    const r = await filesRound(post, () => {}, () => Buffer.from('png'), (p) => (p.includes('.ssh') ? { error: 'arquivo protegido' } : { path: p, size: 3 }));
+    expect(r).toEqual({ state: 'ok', results: [{ id: 'f1', ok: true }, { id: 'f2', ok: false, error: 'arquivo protegido' }] });
+    expect(acked).toEqual({ results: [{ id: 'f1', ok: true, data: Buffer.from('png').toString('base64') }, { id: 'f2', ok: false, error: 'arquivo protegido' }] });
   });
 });
 

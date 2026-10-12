@@ -270,6 +270,12 @@ credenciais › Instalar certificado › Certificado de CA), conferindo a impres
   multilíngue em `~/.local/share/whisper/` (`ggml-small.bin` acerta mais que o `ggml-base.bin`; os `.en` só entendem
   inglês). Sem eles o botão Ditar não aparece. `HABBLAUD_WHISPER_BIN`, `HABBLAUD_FFMPEG_BIN`, `HABBLAUD_WHISPER_MODEL`
   e `HABBLAUD_DICTATION_LANGS` (padrão `pt,en`) ajustam.
+- **Entregas:** o botão da caixinha no topo lista o que cada agente terminou, com resumo e anexos (prints, PDFs,
+  arquivos que ele mandou) que abrem com um toque. Pelo celular precisa de `terminal` no `HABBLAUD_REMOTE_ALLOW`.
+- **Avisos com o app fechado:** no iPhone, abra o endereço no Safari, **Compartilhar › Adicionar à Tela de Início**,
+  abra o Habblaud pelo ícone e ligue **Configurações › Avisos › Avisos no celular** (e toque em Testar). Chegam "precisa
+  de você" e "entregou"; o toque abre o agente ou a entrega. Funciona pelo endereço com certificado válido (o do
+  Tailscale); com a CA própria, só se o iPhone confiar nela.
 - **Sessão:** 30 dias; trocar a senha (rodar o setup de novo) derruba todas. Depois de 5 senhas erradas seguidas, cada
   nova tentativa espera de 1 s até 5 min.
 - **IP mudou?** O `docker:up` refaz o certificado do servidor quando falta o IP novo ou quando faltam 30 dias para

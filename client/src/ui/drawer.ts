@@ -345,6 +345,8 @@ class AgentView {
     const nowSec = section('Agora', h('div', { class: 'ui-now' }, this.actIcon, h('div', { class: 'ui-now__body' }, this.actText, this.actTime)), this.actDetails);
     this.composer = new MessageComposer(ctx, 'drawer');
     this.msgSec = section('Mandar mensagem', this.composer.el);
+    // No celular a caixa fica presa no rodapé da gaveta enquanto a conversa rola (styles.css, .ui-sec--msg).
+    this.msgSec.el.classList.add('ui-sec--msg');
     this.social = new SocialSection(ctx);
     this.perm = new PermissionCard(ctx);
 

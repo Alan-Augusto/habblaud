@@ -7,6 +7,7 @@ import type { UiPrefs } from './prefs';
 import { SoundSettingsGroup } from './settings-sound';
 import type { SoundControl } from './sound';
 import { AboutGroup } from './version';
+import { PushSettings } from './push';
 
 type BoolPref = { [K in keyof UiPrefs]: UiPrefs[K] extends boolean ? K : never }[keyof UiPrefs];
 
@@ -64,6 +65,7 @@ export class SettingsPopover implements UiComponent {
   private soundGroup: SoundSettingsGroup;
   private demoGroup: HTMLElement;
   private about: AboutGroup;
+  private push: PushSettings;
   private demoBusy = false;
   private anchor: HTMLElement | null = null;
 
@@ -117,6 +119,7 @@ export class SettingsPopover implements UiComponent {
     );
 
     this.about = new AboutGroup(ctx);
+    this.push = new PushSettings(ctx);
 
     const close = iconButton(ICONS.close, 'Fechar configurações', () => this.hide(), 'ui-icon-btn--sm');
     this.el = h(
@@ -136,6 +139,7 @@ export class SettingsPopover implements UiComponent {
         'div',
         { class: 'ui-set-group' },
         h('h3', { text: 'Avisos' }),
+        this.push.el,
         sw('browserNotifications', 'Notificações do navegador', 'Avisa quando alguém precisa de você e a aba está em segundo plano.', () => void this.toggleNotifications()),
       ),
       this.soundGroup.el,
@@ -145,7 +149,10 @@ export class SettingsPopover implements UiComponent {
     this.el.addEventListener('toggle', () => {
       this.anchor?.setAttribute('aria-expanded', String(this.isOpen));
       this.syncRootClass();
-      if (this.isOpen) this.render();
+      if (this.isOpen) {
+        this.render();
+        void this.push.refresh();
+      }
     });
   }
 

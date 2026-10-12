@@ -324,6 +324,16 @@ describe('porta remota', () => {
     expect(h.permissionCalls).toEqual([]);
   });
 
+  it('sem login: só manifesto, ícones e o service worker passam (o resto vira /login)', async () => {
+    const h = await start();
+    for (const path of ['/manifest.webmanifest', '/sw.js', '/assets/brand/icon-192.png']) {
+      expect((await request(h.remoteBase, path)).status, path).not.toBe(302);
+    }
+    for (const path of ['/sw.js.map', '/sw.jsx', '/assets/brand/../index.html', '/assets/app.js']) {
+      expect((await request(h.remoteBase, path)).status, path).toBe(302);
+    }
+  });
+
   it('senha errada: 401 sem cookie; certa: cookie de sessão e acesso à API', async () => {
     const h = await start();
     const wrong = await request(h.remoteBase, '/api/remote/login', { method: 'POST', body: { user: 'ana', password: 'nope nope' } });

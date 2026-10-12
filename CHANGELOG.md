@@ -46,7 +46,24 @@ do meio (0.**3**.0).
 - O acesso da página (`GET /api/access`) é relido a cada reconexão: mudar `HABBLAUD_REMOTE_ALLOW` e reiniciar o
   servidor vale para o celular sem recarregar. Tocar no botão do terminal desligado mostra o motivo embaixo dele (no
   celular não há hover para ler a dica).
+- **Ditado na caixa de mensagem** do agente: o mesmo microfone do Novo agente, com o texto entrando onde está o cursor.
+- **Entregas (botão da caixinha na barra do topo):** o que cada agente terminou, em cartões simples: quem, em que
+  projeto, a primeira frase da resposta como título, um resumo curto e miniaturas dos anexos. Um toque abre o pedido,
+  o resumo, os anexos e a resposta completa, com **Abrir terminal** e **Responder**; outro toque num anexo abre o
+  visualizador (imagem, vídeo, PDF, página, texto; deslizar troca de anexo, tocar na imagem amplia). Anexos são os
+  arquivos que o agente mandou (`SendUserFile`), os caminhos de arquivo citados na resposta e as duas últimas telas
+  capturadas. Só respostas finais contam (não as notas de progresso). `GET /api/deliveries` e
+  `GET /api/deliveries/file/:id` (ids opacos; nada de caminho na URL); no Docker o auxiliar do host lê o que não está
+  numa pasta montada. Pelo celular, só com `terminal` em `HABBLAUD_REMOTE_ALLOW`.
+- **Avisos no celular (Web Push):** em Configurações › Avisos, "precisa de você" e "📦 entregou" chegam como
+  notificação mesmo com o Habblaud fechado; o toque abre o agente ou a entrega certa. No iPhone, com o Habblaud
+  adicionado à Tela de Início (o app ganhou manifesto, ícone e service worker). Conteúdo cifrado de ponta a ponta
+  (RFC 8291), chaves VAPID geradas na primeira vez em `<dataDir>/push.json` (600), só serviços de push conhecidos.
 
+### Corrigido
+
+- Celular: a barra do topo não cabia numa linha e empurrava o logo e o botão do painel para fora da tela. Agora são
+  duas linhas (marca e uso em cima, botões embaixo) e o botão do feed sai, porque a barra "Atividade" já faz isso.
 
 ### Segurança
 

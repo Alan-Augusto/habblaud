@@ -18,6 +18,9 @@ import type { SpawnService } from '../spawn/spawn';
 import { ATTACHMENT_BODY_MAX, parseAttachment, type AttachmentStore } from '../spawn/attachments';
 import type { SpawnFolder } from '../spawn/folders';
 import { AUDIO_BODY_MAX, type DictationService } from '../dictation/dictation';
+import type { DeliveryIndex } from '../deliveries/deliveries';
+import type { FileFetcher } from '../deliveries/fetcher';
+import type { PushService } from '../push/webpush';
 
 export interface ApiDeps {
   office: Office;
@@ -62,6 +65,12 @@ export interface ApiDeps {
   attachments?: AttachmentStore;
   /** Ditado (/api/dictation e, para o auxiliar do host, /api/host/dictation/*; dictation/dictation.ts). */
   dictation?: DictationService;
+  /** Entregas (GET /api/deliveries e os anexos em /api/deliveries/file/:id; deliveries/deliveries.ts). */
+  deliveries?: DeliveryIndex;
+  /** Quem lê os arquivos das entregas (e, para o auxiliar do host, /api/host/files/*; deliveries/fetcher.ts). */
+  files?: FileFetcher;
+  /** Avisos no celular (/api/push/*; push/webpush.ts). */
+  push?: PushService;
   /** Renomeia a sala (POST /api/rooms/rename {id, name}; vazio volta ao padrão). Devolve o nome em uso, ou undefined se a sala não existe. */
   renameRoom?: (id: string, name: string) => string | undefined;
   /** Estatísticas do "Meu dia" (GET /api/stats, http/stats.ts). */
@@ -126,6 +135,24 @@ export function sendJson(res: ServerResponse, status: number, body: unknown): vo
     'X-Content-Type-Options': 'nosniff',
     // A API só é lida pela própria página: nada de leitura "no-cors" por outras origens.
     'Cross-Origin-Resource-Policy': 'same-origin',
+  });
+  res.end(data);
+}
+
+/**
+ * Anexo de entrega. Páginas e SVG vêm numa sandbox sem scripts (CSP), para não rodarem com o login do escritório;
+ * PDF e imagens podem abrir dentro do modal (mesma origem).
+ */
+function sendFile(res: ServerResponse, data: Buffer, type: string, name: string): void {
+  const active = /^text\/html|^image\/svg/.test(type);
+  res.writeHead(200, {
+    'Content-Type': type,
+    'Content-Length': data.length,
+    'Cache-Control': 'private, max-age=300',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(name)}`,
+    ...(active ? { 'Content-Security-Policy': "sandbox; default-src 'none'; img-src data: blob: 'self'; style-src 'unsafe-inline'; media-src 'self'" } : {}),
   });
   res.end(data);
 }
@@ -453,6 +480,75 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         if (info) sendJson(res, 200, info);
         else sendJson(res, 404, { error: 'ditado desconhecido' });
       } else methodNotAllowed(res, path === '/api/dictation' ? 'GET, POST' : 'GET');
+      return true;
+    }
+    if (path === '/api/push' || path.startsWith('/api/push/')) {
+      // Avisos no celular: quem pode responder pedidos pode recebê-los (é o que o celular faz por padrão).
+      const push = deps.push;
+      if (!push) sendJson(res, 403, { error: 'avisos no celular desligados' });
+      else if (!trusted(req, 'permissions')) sendJson(res, 403, { error: denied(req, 'os avisos só se ligam pelo próprio computador (http://localhost)') });
+      else if (path === '/api/push' && isRead) sendJson(res, 200, { publicKey: push.publicKey, devices: push.count });
+      else if (method !== 'POST') methodNotAllowed(res, path === '/api/push' ? 'GET' : 'POST');
+      else if (path === '/api/push/subscribe') {
+        readJson(req)
+          .then((body) => {
+            const r = push.subscribe((body as { subscription?: unknown } | null)?.subscription);
+            sendJson(res, 'error' in r ? 400 : 200, 'error' in r ? { error: r.error } : { ok: true, devices: push.count });
+          })
+          .catch((err) => fail(res, err));
+      } else if (path === '/api/push/unsubscribe') {
+        readJson(req)
+          .then((body) => {
+            push.unsubscribe((body as { endpoint?: unknown } | null)?.endpoint);
+            sendJson(res, 200, { ok: true, devices: push.count });
+          })
+          .catch((err) => fail(res, err));
+      } else if (path === '/api/push/test') {
+        req.resume();
+        push
+          .notify({ title: 'Habblaud', body: 'Avisos ligados: quando alguém precisar de você ou entregar algo, aparece aqui.', tag: 'test', url: '/' })
+          .then((sent) => sendJson(res, 200, { sent }), (err) => fail(res, err));
+      } else sendJson(res, 404, { error: 'rota desconhecida' });
+      return true;
+    }
+    if (path === '/api/deliveries' || path.startsWith('/api/deliveries/')) {
+      // Entregas mostram a resposta inteira e arquivos do agente: a mesma trava do terminal.
+      const deliveries = deps.deliveries;
+      if (!deliveries) sendJson(res, 403, { error: 'entregas desligadas (precisam do terminal: acesso local)' });
+      else if (!isRead) methodNotAllowed(res, 'GET');
+      else if (!trusted(req, 'terminal')) sendJson(res, 403, { error: denied(req, 'as entregas só abrem pelo próprio computador (http://localhost)') });
+      else if (path === '/api/deliveries') deliveries.list().then((list) => sendJson(res, 200, { deliveries: list }), (err) => fail(res, err));
+      else if (path.startsWith('/api/deliveries/file/')) {
+        const att = deliveries.attachment(decodeURIComponent(path.slice('/api/deliveries/file/'.length)));
+        if (!att) sendJson(res, 404, { error: 'anexo desconhecido: atualize a lista de entregas' });
+        else if (att.kind === 'capture') sendFile(res, att.data, att.type, att.name);
+        else if (!deps.files) sendJson(res, 404, { error: 'arquivos desligados' });
+        else
+          deps.files.get(att.path).then(
+            (r) => ('data' in r ? sendFile(res, r.data, att.type, att.name) : sendJson(res, r.status, { error: r.error })),
+            (err) => fail(res, err),
+          );
+      } else sendJson(res, 404, { error: 'rota desconhecida' });
+      return true;
+    }
+    if (path === '/api/host/files/poll' || path === '/api/host/files/ack') {
+      // Só o auxiliar do host, pela porta local (nunca pela remota); fora do Docker, só pelo loopback.
+      const files = deps.files;
+      if (method !== 'POST') methodNotAllowed(res, 'POST');
+      else if (!files) sendJson(res, 403, { error: 'arquivos desligados' });
+      else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, 'só o auxiliar do próprio computador') });
+      } else if (path === '/api/host/files/poll') {
+        req.resume();
+        sendJson(res, 200, { files: files.poll() });
+      } else {
+        readJson(req, 36 * 1024 * 1024)
+          .then((body) => {
+            files.ack(body);
+            sendJson(res, 200, { ok: true });
+          })
+          .catch((err) => fail(res, err));
+      }
       return true;
     }
     if (path === '/api/host/dictation/poll' || path === '/api/host/dictation/ack') {

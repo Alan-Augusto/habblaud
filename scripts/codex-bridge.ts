@@ -23,6 +23,8 @@ import { createCodexQueueRunner, findCodexBin, THREAD_ID, type CodexQueueResult,
 import { createOpener, folderProblem, parseSpawn, spawnUrl, type Opener } from '../server/spawn/spawn';
 import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_SPAWN, attachmentsRoot, promptWithAttachments, safeFileName, writeAttachments, type Attachment } from '../server/spawn/attachments';
 import { createWhisperTranscriber, findWhisper, type Transcriber } from '../server/dictation/whisper';
+import { checkFile } from '../server/deliveries/files';
+import { readFileSync } from 'node:fs';
 
 export const DEFAULT_PORT = 4747;
 /** Intervalo entre as rodadas. */
@@ -255,6 +257,36 @@ export async function dictationRound(post: Post, transcribe: Transcriber, log: (
   return { state: 'ok', results };
 }
 
+/**
+ * Arquivos das entregas: busca os caminhos pedidos (POST /api/host/files/poll), confere cada um com checkFile (tipo de
+ * ver, nada com cara de segredo, até 25 MB, links resolvidos) e devolve o conteúdo em /api/host/files/ack. Nunca lança.
+ */
+export async function filesRound(post: Post, log: (line: string) => void = () => {}, read: (p: string) => Buffer = readFileSync, check: typeof checkFile = checkFile): Promise<RoundResult> {
+  const polled = await post('/api/host/files/poll', {});
+  if (!polled) return { state: 'down' };
+  const list = rec(polled.json)?.files;
+  if (polled.status !== 200 || !Array.isArray(list)) return { state: 'refused', status: polled.status };
+  const results: Array<BridgeResult & { data?: string }> = [];
+  for (const raw of list) {
+    const r = rec(raw);
+    const id = typeof r?.id === 'string' ? r.id : '';
+    if (!id) continue;
+    const c = check(typeof r?.path === 'string' ? r.path : '');
+    if ('error' in c) {
+      results.push({ id, ok: false, error: c.error });
+      log(`✗ arquivo de entrega recusado: ${c.error}`);
+      continue;
+    }
+    try {
+      results.push({ id, ok: true, data: read(c.path).toString('base64') });
+    } catch {
+      results.push({ id, ok: false, error: 'arquivo ilegível' });
+    }
+  }
+  if (results.length) await post('/api/host/files/ack', { results });
+  return { state: 'ok', results: results.map(({ id, ok, error }) => ({ id, ok, ...(error ? { error } : {}) })) };
+}
+
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed === 'help') {
@@ -272,18 +304,21 @@ async function main(): Promise<void> {
       : `Sem o Codex (codex no PATH ou HABBLAUD_CODEX_BIN): só abro os agentes novos do Habblaud (http://127.0.0.1:${parsed.port}) no app do Claude. Ctrl+C para parar.`,
   );
   const whisper = findWhisper(process.env);
+  let transcribe: Transcriber | undefined;
   if ('missing' in whisper) log(`Ditado desligado: falta ${whisper.missing}.`);
   else {
     log(`Ditado: Whisper local (${whisper.model.split('/').pop()}), idiomas ${whisper.langs.join('/')} detectados sozinhos.`);
-    const transcribe = createWhisperTranscriber(whisper);
-    if (!parsed.once) {
-      void (async () => {
-        for (;;) {
-          await dictationRound(post, transcribe, log);
-          await new Promise((ok) => setTimeout(ok, DICTATION_POLL_MS));
-        }
-      })();
-    }
+    transcribe = createWhisperTranscriber(whisper);
+  }
+  // Rodada rápida (a pessoa está esperando): arquivos das entregas e ditado.
+  if (!parsed.once) {
+    void (async () => {
+      for (;;) {
+        await filesRound(post, log);
+        if (transcribe) await dictationRound(post, transcribe, log);
+        await new Promise((ok) => setTimeout(ok, DICTATION_POLL_MS));
+      }
+    })();
   }
   let last = '';
   for (;;) {
