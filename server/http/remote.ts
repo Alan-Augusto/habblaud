@@ -19,7 +19,7 @@
 // Sessão: cookie HttpOnly + SameSite=Strict (+ Secure com HTTPS) assinado com HMAC; chave = segredo aleatório em
 // <dataDir>/remote-secret misturado com usuário e hash da senha: trocar a senha derruba todas as sessões.
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, unwatchFile, watchFile, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, unwatchFile, watchFile, writeFileSync } from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
@@ -127,13 +127,18 @@ export function safeEqual(a: string, b: string): boolean {
 
 export class RemoteSessions {
   private readonly key: Buffer;
+  /** Assinatura -> validade dos tokens encerrados por "Sair" antes de vencer (o cookie apagado não basta: uma cópia valeria até expirar). */
+  private readonly revoked = new Map<string, number>();
 
   constructor(
     secret: Buffer,
     cfg: Pick<RemoteConfig, 'user' | 'passwordHashText'>,
     private readonly now: () => number = Date.now,
+    /** Onde a lista de tokens encerrados sobrevive a reinícios (ausente = só em memória). */
+    private readonly revokedFile?: string,
   ) {
     this.key = createHmac('sha256', secret).update(`${cfg.user}\0${cfg.passwordHashText}`, 'utf8').digest();
+    this.loadRevoked();
   }
 
   private sign(payload: string): string {
@@ -147,13 +152,54 @@ export class RemoteSessions {
   }
 
   verify(token: string | undefined): boolean {
-    if (!token) return false;
+    const parsed = this.parse(token);
+    return !!parsed && !this.revoked.has(parsed.sig);
+  }
+
+  /** Encerra este token (botão "Sair"); token inválido ou vencido não muda nada. */
+  revoke(token: string | undefined): void {
+    const parsed = this.parse(token);
+    if (!parsed) return;
+    const now = this.now();
+    for (const [sig, exp] of this.revoked) if (exp <= now) this.revoked.delete(sig);
+    this.revoked.set(parsed.sig, parsed.exp);
+    this.saveRevoked();
+  }
+
+  private parse(token: string | undefined): { exp: number; sig: string } | undefined {
+    if (!token) return undefined;
     const m = /^v1\.(\d{10,16})\.([A-Za-z0-9_-]{43})$/.exec(token);
-    if (!m) return false;
-    if (Number(m[1]) <= this.now()) return false;
+    if (!m) return undefined;
+    const exp = Number(m[1]);
+    if (exp <= this.now()) return undefined;
     const expected = Buffer.from(this.sign(`v1.${m[1]}`));
     const got = Buffer.from(m[2]);
-    return expected.length === got.length && timingSafeEqual(expected, got);
+    return expected.length === got.length && timingSafeEqual(expected, got) ? { exp, sig: m[2] } : undefined;
+  }
+
+  private loadRevoked(): void {
+    if (!this.revokedFile) return;
+    try {
+      const data: unknown = JSON.parse(readFileSync(this.revokedFile, 'utf8'));
+      const now = this.now();
+      for (const [sig, exp] of Object.entries(data as Record<string, unknown>)) {
+        if (/^[A-Za-z0-9_-]{43}$/.test(sig) && typeof exp === 'number' && exp > now) this.revoked.set(sig, exp);
+      }
+    } catch {
+      // sem arquivo (ou ilegível): ninguém encerrado ainda
+    }
+  }
+
+  private saveRevoked(): void {
+    if (!this.revokedFile) return;
+    try {
+      mkdirSync(dirname(this.revokedFile), { recursive: true });
+      const tmp = `${this.revokedFile}.tmp`;
+      writeFileSync(tmp, JSON.stringify(Object.fromEntries(this.revoked)), { mode: 0o600 });
+      renameSync(tmp, this.revokedFile);
+    } catch {
+      // segue valendo em memória até o próximo reinício
+    }
   }
 }
 
@@ -372,7 +418,10 @@ export function createRemoteGate(deps: RemoteGateDeps): (req: IncomingMessage, r
     if (path === '/api/remote/logout') {
       req.resume();
       if (method !== 'POST') sendJson(res, 405, { error: 'método não permitido' }, { Allow: 'POST' });
-      else sendJson(res, 200, { ok: true }, { 'Set-Cookie': cookieHeader('', 0, deps.secure) });
+      else {
+        deps.sessions.revoke(readCookie(req.headers.cookie, COOKIE));
+        sendJson(res, 200, { ok: true }, { 'Set-Cookie': cookieHeader('', 0, deps.secure) });
+      }
       return true;
     }
 

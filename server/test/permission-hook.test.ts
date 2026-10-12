@@ -197,7 +197,7 @@ describe('permission-hook.mjs (funções)', () => {
     expect(parseOptions([], {})).toEqual({ port: 4747, timeoutMs: 300_000 });
     expect(parseOptions(['--port', '4851', '--timeout', '60'], {})).toEqual({ port: 4851, timeoutMs: 60_000 });
     expect(parseOptions([], { HABBLAUD_PORT: '4848', HABBLAUD_PERMISSION_TIMEOUT: '1' })).toEqual({ port: 4848, timeoutMs: 5_000 });
-    expect(parseOptions(['--port', 'x', '--timeout', '99999'], {})).toEqual({ port: 4747, timeoutMs: 1_800_000 });
+    expect(parseOptions(['--port', 'x', '--timeout', '99999'], {})).toEqual({ port: 4747, timeoutMs: 86_400_000 });
   });
 
   it('requestBody: só o que o Habblaud usa, com textos cortados', () => {

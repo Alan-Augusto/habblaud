@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { access, fallbackAccess, loadAccess, setAccess } from './access';
+import { access, fallbackAccess, loadAccess, remoteLogout, setAccess } from './access';
 
 afterEach(() => setAccess(null));
 
@@ -20,5 +20,17 @@ describe('access', () => {
   it('resposta torta é ignorada', async () => {
     const bad = (() => Promise.resolve(new Response('{"remote":"sim"}', { status: 200 }))) as unknown as typeof fetch;
     expect((await loadAccess(bad)).remote).toBe(false);
+  });
+  it('Sair: POST JSON no logout e só então vai para /login', async () => {
+    const calls: [string, RequestInit | undefined][] = [];
+    const went: string[] = [];
+    const ok = ((u: string, i?: RequestInit) => (calls.push([u, i]), Promise.resolve(new Response('{"ok":true}', { status: 200 })))) as unknown as typeof fetch;
+    expect(await remoteLogout(ok, (u) => went.push(u))).toBe(true);
+    expect(calls[0][0]).toBe('/api/remote/logout');
+    expect(calls[0][1]).toMatchObject({ method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    expect(went).toEqual(['/login']);
+    const down = (() => Promise.reject(new Error('rede'))) as unknown as typeof fetch;
+    expect(await remoteLogout(down, (u) => went.push(u))).toBe(false);
+    expect(went).toEqual(['/login']);
   });
 });

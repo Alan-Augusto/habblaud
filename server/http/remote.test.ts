@@ -87,6 +87,24 @@ describe('RemoteSessions', () => {
     expect(sessions.verify(token)).toBe(false);
   });
 
+  it('revoke encerra só aquele token, e a lista sobrevive a um reinício', () => {
+    const now = 1_800_000_000_000;
+    const tmp = tempDir();
+    const file = join(tmp.dir, 'data', 'remote-revoked.json');
+    const sessions = new RemoteSessions(SECRET, CFG, () => now, file);
+    const phone = sessions.issue().token;
+    const other = new RemoteSessions(SECRET, CFG, () => now + 1).issue().token;
+    sessions.revoke(phone);
+    sessions.revoke('lixo');
+    expect(sessions.verify(phone)).toBe(false);
+    expect(sessions.verify(other)).toBe(true);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    const restarted = new RemoteSessions(SECRET, CFG, () => now, file);
+    expect(restarted.verify(phone)).toBe(false);
+    expect(restarted.verify(other)).toBe(true);
+    tmp.cleanup();
+  });
+
   it('loadSecret cria o segredo com permissão 600 e o reaproveita', () => {
     const tmp = tempDir();
     const file = join(tmp.dir, 'data', 'remote-secret');
@@ -247,6 +265,18 @@ async function login(base: string): Promise<string> {
 }
 
 describe('porta remota', () => {
+  it('Sair: apaga o cookie e o mesmo token deixa de valer (mesmo guardado numa cópia)', async () => {
+    const s = await start();
+    const cookie = await login(s.remoteBase);
+    expect((await request(s.remoteBase, '/api/access', { headers: { Cookie: cookie } })).status).toBe(200);
+    expect((await request(s.remoteBase, '/api/remote/logout', { headers: { Cookie: cookie } })).status).toBe(405);
+    const out = await request(s.remoteBase, '/api/remote/logout', { method: 'POST', body: {}, headers: { Cookie: cookie } });
+    expect(out.status).toBe(200);
+    expect(out.headers['set-cookie']?.[0]).toMatch(/Max-Age=0/);
+    expect((await request(s.remoteBase, '/api/access', { headers: { Cookie: cookie } })).status).toBe(401);
+    expect((await request(s.remoteBase, '/', { headers: { Cookie: cookie } })).headers.location).toBe('/login');
+  });
+
   it('sem login: a página vira /login e a API responde 401', async () => {
     const h = await start();
     const page = await request(h.remoteBase, '/');

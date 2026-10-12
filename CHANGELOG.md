@@ -20,6 +20,12 @@ do meio (0.**3**.0).
   `HABBLAUD_REMOTE_ALLOW`. A porta 4747 continua só no computador e sem login (hooks, plugins e o seu navegador).
 - `GET /api/access`: o que a página aberta pode fazer. A página passa a perguntar ao servidor em vez de deduzir pelo
   endereço, o que permite responder pedidos pela porta remota.
+- **Botão Sair** na barra do topo da porta remota (só aparece no celular logado): encerra o login daquele aparelho e
+  invalida o token no servidor, então uma cópia do cookie também deixa de valer.
+- **Espera de até 24 h pelo escritório:** `HABBLAUD_PERMISSION_TIMEOUT` aceita até 86400 s (antes 1800, e o plugin
+  cortava em 330 s, então na prática eram 5 min). O padrão continua 5 min.
+- Pedido esperando sem botões no escritório (o hook já devolveu ao app, ou a sessão abriu sem o plugin): a linha de
+  "Esperando você" diz para responder no app do Claude (ou no Codex).
 
 ### Segurança
 

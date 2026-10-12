@@ -451,8 +451,8 @@ terminal** deixa a pergunta lá. A resposta chega ao agente como se você tivess
 - O pedido passa por um hook `PermissionRequest` do Claude Code (o do plugin, ou o do jeito antigo), que só o desvia
   quando há **alguma página do Habblaud aberta** neste computador; com o Habblaud parado ou sem nenhuma página, ele
   sai na hora e o terminal segue normal.
-- Sem resposta pelo escritório em 5 minutos, o pedido volta a valer só no terminal (as opções do plugin estão em
-  [`mod/README.md`](mod/README.md); no jeito antigo, `npm run hooks:install -- --timeout 120` muda o tempo e
+- Sem resposta pelo escritório em 5 minutos (até 24 h com `HABBLAUD_PERMISSION_TIMEOUT=86400` no `env` do
+  `settings.json`), o pedido volta a valer só no terminal (as opções do plugin estão em [`mod/README.md`](mod/README.md); no jeito antigo, `npm run hooks:install -- --timeout 120` muda o tempo e
   `--port`, a porta). Em **subagentes em segundo plano** o Claude Code só mostra o diálogo no terminal depois que o
   hook termina: responda pelo escritório ou use **Responder no terminal**.
 - Funciona com a mesma trava do terminal: só com o Habblaud acessível apenas pelo próprio

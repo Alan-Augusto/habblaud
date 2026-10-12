@@ -1,4 +1,5 @@
 // Barra superior: marca, conexão, contadores, uso por conta e botões de controle.
+import { access, remoteLogout } from '../net/access';
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText, setTitle, setVariant } from './dom';
 import { formatDuration, formatInt } from './format';
@@ -42,6 +43,7 @@ export class TopBar implements UiComponent {
   private feedBtn: HTMLButtonElement;
   private timelapseBtn: HTMLButtonElement;
   readonly settingsBtn: HTMLButtonElement;
+  private readonly logoutBtn: HTMLButtonElement;
   /** Grupo dos botões de painéis (feed, configurações, ajuda); o histórico entra aqui (ui/index.ts). */
   readonly panelGroup: HTMLElement;
 
@@ -98,6 +100,9 @@ export class TopBar implements UiComponent {
     this.timelapseBtn = iconButton(TIMELAPSE_ICONS.timelapse, 'Timelapse: reproduzir o dia (L)', () => ctx.toggleTimelapse(), 'ui-btn-timelapse');
     this.settingsBtn = iconButton(ICONS.settings, 'Configurações', () => ctx.toggleSettings());
     this.settingsBtn.setAttribute('aria-haspopup', 'dialog');
+    // Só na porta remota (celular com login): a porta local não tem login para encerrar.
+    this.logoutBtn = iconButton(ICONS.logout, 'Sair (encerra o login deste aparelho)', () => void this.logout(), 'ui-btn-logout');
+    this.logoutBtn.hidden = true;
     this.version = new VersionChip(ctx, this.settingsBtn);
     const viewGroup = h(
       'div',
@@ -113,6 +118,7 @@ export class TopBar implements UiComponent {
       this.feedBtn,
       this.settingsBtn,
       iconButton(ICONS.help, 'Ajuda (?)', () => ctx.openHelp()),
+      this.logoutBtn,
     );
     this.panelGroup = panelGroup;
 
@@ -137,6 +143,14 @@ export class TopBar implements UiComponent {
   }
 
   /** Acrescenta um botão de janela própria (ex.: Meu dia) ao começo do grupo de painéis. */
+  private async logout(): Promise<void> {
+    this.logoutBtn.disabled = true;
+    if (!(await remoteLogout())) {
+      this.logoutBtn.disabled = false;
+      this.ctx.announce('Não foi possível sair: sem resposta do servidor.');
+    }
+  }
+
   addPanelButton(btn: HTMLElement): void {
     this.panelGroup.prepend(btn);
   }
@@ -188,6 +202,7 @@ export class TopBar implements UiComponent {
 
     this.usage.render();
     this.version.render();
+    setHidden(this.logoutBtn, !access().remote);
 
     this.sidebarBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('sidebar')));
     this.feedBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('feed')));

@@ -61,15 +61,17 @@ prazo de 2 s de cada pergunta ao Habblaud (`$.http.fetch` não aceita AbortSigna
 Um hook `PermissionRequest` comum (sem mod), em `habblaud-permissoes/hooks/hooks.json`:
 
 ```json
-{ "matcher": "*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/permission-hook.mjs\"", "timeout": 330, "statusMessage": "Aguardando resposta no Habblaud" }] }
+{ "matcher": "*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/permission-hook.mjs\"", "timeout": 86430, "statusMessage": "Aguardando resposta no Habblaud" }] }
 ```
 
 O script `hooks/permission-hook.mjs` é o mesmo que o `npm run hooks:install` instala (fonte única; Node puro, só
 `node:*`, porque o Claude Code copia apenas a pasta do plugin para o cache). Ele manda o pedido ao Habblaud local
 e espera a resposta por até 5 min; o diálogo continua no terminal e vale o que você responder primeiro. Sem o
 Habblaud no ar ou sem nenhuma página aberta, sai na hora. Porta: `HABBLAUD_PORT` (padrão 4747); espera:
-`HABBLAUD_PERMISSION_TIMEOUT` (padrão 300 s; o tempo limite do hook no plugin é fixo em 330 s, então valores
-maiores que 300 são cortados pelo Claude Code). Precisa de `node` 22+ no `PATH` da sessão.
+`HABBLAUD_PERMISSION_TIMEOUT` (padrão 300 s, até 86400 s = 24 h; o tempo limite do hook no plugin é 86430 s). Para aprovar
+pelo celular longe do computador, ponha `"env": { "HABBLAUD_PERMISSION_TIMEOUT": "86400" }` no `settings.json` da
+conta: vale para as sessões abertas depois. Subagentes em segundo plano só mostram o diálogo quando o hook termina,
+por isso o padrão continua 5 min. Precisa de `node` 22+ no `PATH` da sessão.
 
 `claude plugin validate --strict mod/habblaud-permissoes`: `✔ Validation passed` (o validador também confere o
 esquema do `hooks.json`).

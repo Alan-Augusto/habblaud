@@ -27,7 +27,7 @@ import { callSignature, scanToolCall } from './transcript';
 /** Tempo que o hook espera por padrão (ele manda o próprio em `timeout_ms`). */
 export const DEFAULT_TIMEOUT_MS = 300_000;
 export const MIN_TIMEOUT_MS = 5_000;
-export const MAX_TIMEOUT_MS = 30 * 60_000;
+export const MAX_TIMEOUT_MS = 24 * 60 * 60_000;
 /** Folga depois do tempo limite do hook antes de o pedido sumir sozinho. */
 export const EXPIRY_GRACE_MS = 5_000;
 /** Resposta mais longa de um long-poll (o hook pergunta de novo em seguida). */

@@ -38,6 +38,24 @@ export async function loadAccess(fetchImpl: typeof fetch = fetch): Promise<Acces
   return access();
 }
 
+/** Encerra o login deste aparelho (porta remota) e volta à tela de entrada. Devolve false se o servidor não respondeu. */
+export async function remoteLogout(fetchImpl: typeof fetch = fetch, go: (url: string) => void = (u) => location.assign(u)): Promise<boolean> {
+  try {
+    const res = await fetchImpl('/api/remote/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+    if (!res.ok) return false;
+  } catch {
+    return false;
+  }
+  go('/login');
+  return true;
+}
+
 /** Só para testes. */
 export function setAccess(a: AccessInfo | null): void {
   current = a;
