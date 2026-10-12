@@ -110,7 +110,7 @@ Saída de `claude plugin validate --strict mod/habblaud-mensagens`:
 ❯ ./register.ts hooks: session.start
 ❯ ./register.ts calls: $.clock.after (via waitAtMost), $.clock.every (via schedule), $.env.get (via readEnv), $.http.fetch (via postJson), $.prompt.submit (via submitOne), $.session.id (via round), $.session.surfaces (via round)
 ❯ ./register.ts env writes: nothing
-❯ ./register.ts env reads: CLAUDE_CONFIG_DIR, HABBLAUD_PORT, HOME, USERPROFILE
+❯ ./register.ts env reads: CLAUDE_CODE_ENTRYPOINT, CLAUDE_CONFIG_DIR, HABBLAUD_PORT, HOME, USERPROFILE
 ```
 
 Em palavras: um hook só (`session.start`, que liga o relógio das rodadas); a única ação na sessão é o

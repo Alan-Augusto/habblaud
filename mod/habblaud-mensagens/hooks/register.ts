@@ -3,7 +3,8 @@
 //
 // O que faz, e `claude plugin validate` lista exatamente o que o módulo chama (a saída está no mod/README.md):
 //
-// 1. A cada 2 s, só onde a sessão desenha (`$.session.surfaces()` vazia = `claude -p`/SDK: nada a fazer), pergunta
+// 1. A cada 2 s, só onde a sessão desenha (`$.session.surfaces()` vazia = `claude -p`/SDK: nada a fazer) ou numa
+//    sessão do app desktop (CLAUDE_CODE_ENTRYPOINT=claude-desktop: SDK por baixo, sem superfície fora da tela), pergunta
 //    ao Habblaud local se há mensagens para ela: POST http://127.0.0.1:<HABBLAUD_PORT ou 4747>/api/mod/inbox com
 //    {session, account}. A pergunta também marca a presença da sessão: é ela que acende, no escritório, a caixa de
 //    mensagem deste agente. Fora do ar, ou respondendo qualquer coisa que não seja 2xx (403 = mensagens desligadas
@@ -66,6 +67,9 @@ interface ModEnv {
   /** Id da conta (o nome da pasta, como o servidor chama); ausente sem HOME (ou USERPROFILE) nem CLAUDE_CONFIG_DIR. */
   accountId?: string
   port: number
+  /** Sessão do app desktop do Claude (CLAUDE_CODE_ENTRYPOINT=claude-desktop): roda como SDK e só tem superfície
+   *  enquanto está na tela do app, mas é interativa e recebe prompts mesmo assim. */
+  desktop: boolean
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -179,7 +183,10 @@ async function readEnv($: EngineInterface): Promise<ModEnv> {
   // No Windows, HOME só existe se alguém o definir: vale o USERPROFILE (a mesma ordem do mod habblaud).
   const home = (await $.env.get('HOME'))?.trim() || (await $.env.get('USERPROFILE'))?.trim() || undefined
   const configDir = configDirOf(await $.env.get('CLAUDE_CONFIG_DIR'), home)
-  const next: ModEnv = { port: portOf(await $.env.get('HABBLAUD_PORT')) }
+  const next: ModEnv = {
+    port: portOf(await $.env.get('HABBLAUD_PORT')),
+    desktop: (await $.env.get('CLAUDE_CODE_ENTRYPOINT'))?.trim() === 'claude-desktop',
+  }
   const accountId = configDir ? accountIdOf(configDir) : undefined
   if (accountId) next.accountId = accountId
   env = next
@@ -265,9 +272,9 @@ async function round($: EngineInterface): Promise<void> {
   if (polling) return
   polling = true
   try {
-    const surfaces = await $.session.surfaces()
-    if (!surfaces.length) return
     const e = await readEnv($)
+    const surfaces = await $.session.surfaces()
+    if (!surfaces.length && !e.desktop) return
     const session = await $.session.id()
     const res = await postJson($, e.port, '/api/mod/inbox', inboxBody(session, e.accountId))
     const messages = res?.ok ? parseInbox(res.text) : undefined

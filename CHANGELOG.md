@@ -26,6 +26,9 @@ do meio (0.**3**.0).
   cortava em 330 s, então na prática eram 5 min). O padrão continua 5 min.
 - Pedido esperando sem botões no escritório (o hook já devolveu ao app, ou a sessão abriu sem o plugin): a linha de
   "Esperando você" diz para responder no app do Claude (ou no Codex).
+- **Mensagens para sessões do app desktop do Claude:** o plugin `habblaud-mensagens` só perguntava ao Habblaud
+  quando a sessão tinha superfície, e as do app desktop (SDK por baixo) só têm enquanto estão na tela. Agora
+  `CLAUDE_CODE_ENTRYPOINT=claude-desktop` também conta; `claude -p` e outros usos do SDK continuam de fora.
 
 ### Segurança
 
