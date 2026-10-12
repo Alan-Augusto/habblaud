@@ -6,7 +6,7 @@
 import { isDemoId } from '../../../shared/timeline';
 import type { OfficeSnapshot } from '../../../shared/types';
 import type { UiContext } from './context';
-import { canRecord, DictationButton, insertDictation } from './dictation';
+import { DictationButton, dictationAvailable, insertDictation } from './dictation';
 import { h, iconButton, setHidden, setText } from './dom';
 import { ICONS } from './icons';
 
@@ -243,13 +243,7 @@ export class SpawnPanel {
   }
 
   private async checkDictation(): Promise<void> {
-    if (!canRecord()) return setHidden(this.dictate.el, true);
-    try {
-      const r = await api<{ available: boolean }>('/api/dictation');
-      setHidden(this.dictate.el, !r.available);
-    } catch {
-      setHidden(this.dictate.el, true);
-    }
+    setHidden(this.dictate.el, !(await dictationAvailable()));
   }
 
   private setFolders(list: FolderOption[]): void {

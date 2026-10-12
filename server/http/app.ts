@@ -432,10 +432,13 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       return true;
     }
     if (path === '/api/dictation' || path.startsWith('/api/dictation/')) {
-      // Ditado do "Novo agente": a mesma trava dele (o texto vira um pedido para um agente).
+      // Ditado do "Novo agente" e da caixa de mensagem: vale com qualquer uma das duas travas (o texto vira um pedido
+      // ou uma mensagem, que continuam com a trava delas ao serem enviados).
       const dictation = deps.dictation;
       if (!dictation) sendJson(res, 403, { error: 'ditado desligado' });
-      else if (!trusted(req, 'spawn')) sendJson(res, 403, { error: denied(req, 'o ditado só funciona pelo próprio computador (http://localhost)') });
+      else if (!trusted(req, 'spawn') && !trusted(req, 'messages')) {
+        sendJson(res, 403, { error: denied(req, 'o ditado só funciona pelo próprio computador (http://localhost)') });
+      }
       else if (path === '/api/dictation' && isRead) sendJson(res, 200, { available: dictation.available() });
       else if (path === '/api/dictation' && method === 'POST') {
         readJson(req, AUDIO_BODY_MAX)

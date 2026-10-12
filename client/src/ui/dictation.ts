@@ -1,6 +1,7 @@
 // Ditado: botão de microfone que grava no navegador (MediaRecorder), manda o áudio ao Habblaud (POST /api/dictation)
 // e devolve o texto transcrito pelo Whisper local do Mac, com o idioma detectado sozinho (português ou inglês; ver
-// server/dictation/whisper.ts). O microfone só existe em página segura (HTTPS ou localhost): fora disso o botão some.
+// server/dictation/whisper.ts). Fica no "Novo agente" e na caixa de mensagem (gaveta e terminal). O microfone só existe
+// em página segura (HTTPS ou localhost): fora disso o botão some.
 import { h, setText } from './dom';
 import { ICONS } from './icons';
 
@@ -74,6 +75,28 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
+const AVAILABLE_TTL_MS = 30_000;
+let availableCache: { at: number; value: Promise<boolean> } | null = null;
+
+/** O ditado funciona daqui (navegador grava e o Mac tem o Whisper)? Uma consulta a cada 30 s, dividida entre as caixas. */
+export function dictationAvailable(now = Date.now()): Promise<boolean> {
+  if (!canRecord()) return Promise.resolve(false);
+  if (availableCache && now - availableCache.at < AVAILABLE_TTL_MS) return availableCache.value;
+  const value = api<{ available: boolean }>('/api/dictation').then(
+    (r) => r.available === true,
+    () => false,
+  );
+  availableCache = { at: now, value };
+  return value;
+}
+
+export interface DictationButtonOptions {
+  /** Só o ícone (caixa de mensagem); gravando, mostra o tempo. */
+  compact?: boolean;
+  /** Chamado quando a gravação começa (a caixa guarda para qual agente era o ditado). */
+  onStart?: () => void;
+}
+
 export class DictationButton {
   readonly el: HTMLButtonElement;
   private readonly label: HTMLElement;
@@ -88,9 +111,15 @@ export class DictationButton {
   constructor(
     private readonly onText: (t: DictationText) => void,
     private readonly say: (text: string, error?: boolean) => void,
+    private readonly opts: DictationButtonOptions = {},
   ) {
-    this.label = h('span', { class: 'ui-dictate__label', text: 'Ditar' });
-    this.el = h('button', { class: 'ui-btn ui-dictate', type: 'button', attrs: { 'aria-pressed': 'false', title: 'Ditar o pedido (português ou inglês, o idioma é detectado sozinho)' }, on: { click: () => void this.toggle() } });
+    this.label = h('span', { class: 'ui-dictate__label', text: opts.compact ? '' : 'Ditar' });
+    this.el = h('button', {
+      class: `ui-btn ui-dictate${opts.compact ? ' ui-dictate--compact' : ''}`,
+      type: 'button',
+      attrs: { 'aria-pressed': 'false', 'aria-label': 'Ditar', title: 'Ditar (português ou inglês, o idioma é detectado sozinho)' },
+      on: { click: () => void this.toggle() },
+    });
     const icon = h('span', { class: 'ui-dictate__icon', attrs: { 'aria-hidden': 'true' } });
     icon.innerHTML = ICONS.mic;
     this.el.append(icon, this.label);
@@ -136,12 +165,14 @@ export class DictationButton {
     this.recorder.addEventListener('stop', () => void this.finish(), { once: true });
     this.recorder.start(1_000);
     this.startedAt = Date.now();
+    this.opts.onStart?.();
     this.set('recording');
-    this.say('Gravando… fale em português ou inglês e toque em Parar.');
+    this.say(this.opts.compact ? 'Gravando… toque no microfone de novo para parar.' : 'Gravando… fale em português ou inglês e toque em Parar.');
     this.timer = setInterval(() => {
       const ms = Date.now() - this.startedAt;
       const s = Math.floor(ms / 1000);
-      setText(this.label, `Parar ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+      const clock = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      setText(this.label, this.opts.compact ? clock : `Parar ${clock}`);
       if (ms >= MAX_RECORD_MS) this.stopRecorder();
     }, 250);
   }
@@ -209,6 +240,8 @@ export class DictationButton {
     this.el.disabled = state === 'working';
     const icon = this.el.querySelector('.ui-dictate__icon');
     if (icon) icon.innerHTML = state === 'recording' ? ICONS.stopRec : ICONS.mic;
-    setText(this.label, state === 'recording' ? 'Parar 0:00' : state === 'working' ? 'Transcrevendo…' : 'Ditar');
+    this.el.setAttribute('aria-label', state === 'recording' ? 'Parar o ditado' : state === 'working' ? 'Transcrevendo' : 'Ditar');
+    if (this.opts.compact) setText(this.label, state === 'recording' ? '0:00' : state === 'working' ? '…' : '');
+    else setText(this.label, state === 'recording' ? 'Parar 0:00' : state === 'working' ? 'Transcrevendo…' : 'Ditar');
   }
 }

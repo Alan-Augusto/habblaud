@@ -4987,6 +4987,10 @@ button.ui-term__think:hover,
   transition: border-color 0.15s;
 }
 
+.ui-term__prompt--mic {
+  grid-template-columns: 2ch minmax(0, 1fr) auto auto;
+}
+
 .ui-term__prompt:focus-within {
   border-color: rgba(124, 200, 255, 0.55);
 }
@@ -5079,6 +5083,42 @@ button.ui-term__think:hover,
 
 .ui-msg__send:disabled {
   opacity: 0.45;
+}
+
+/* Microfone da caixa de mensagem: só o ícone; gravando, mostra o tempo. */
+.ui-dictate--compact {
+  flex: none;
+  gap: 4px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 7px;
+  justify-content: center;
+  touch-action: manipulation;
+}
+
+.ui-dictate--compact .ui-dictate__label:empty {
+  display: none;
+}
+
+.ui-msg--terminal .ui-dictate--compact {
+  align-self: end;
+  min-width: 26px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--ui-line-strong);
+  background: none;
+  color: var(--ui-muted);
+  font: 11px/1 var(--font-mono);
+}
+
+.ui-msg--terminal .ui-dictate--compact .ui-px-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.ui-msg__dictation.is-error {
+  color: var(--ui-danger, #ff8a8a);
 }
 
 /* No terminal: o botão fica na ponta da linha do prompt, discreto como o resto. */
