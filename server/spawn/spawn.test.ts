@@ -1,5 +1,22 @@
+import { chmodSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { folderProblem, HOST_PRESENCE_MS, parseSpawn, QUEUED_TIMEOUT_MS, SENT_TIMEOUT_MS, SpawnService, spawnUrl, type Opener } from './spawn';
+import {
+  cliArgs,
+  createCliRunner,
+  findClaudeBin,
+  folderProblem,
+  HOST_PRESENCE_MS,
+  launch,
+  parseSpawn,
+  QUEUED_TIMEOUT_MS,
+  SENT_TIMEOUT_MS,
+  sessionName,
+  SpawnService,
+  spawnUrl,
+  type Opener,
+} from './spawn';
 
 describe('novo agente: pedido e link', () => {
   it('aceita só pasta absoluta e pedido do tamanho certo', () => {
@@ -132,5 +149,68 @@ describe('SpawnService com anexos', () => {
     await new Promise((ok) => setTimeout(ok, 0));
     expect(opened).toEqual([]);
     expect(s.get('s3')).toMatchObject({ status: 'failed', error: 'não deu para gravar os anexos (disco cheio)' });
+  });
+});
+
+describe('novo agente em segundo plano (claude --bg)', () => {
+  it('nome da sessão e argumentos: o pedido vai depois de `--`', () => {
+    expect(sessionName('  \n rode os testes\nsegunda linha')).toBe('Habblaud: rode os testes');
+    expect(sessionName('')).toBe('Habblaud');
+    expect(sessionName('x'.repeat(100))).toHaveLength('Habblaud: '.length + 48);
+    expect(cliArgs({ folder: '/p', prompt: 'doctor' })).toEqual(['--bg', '-n', 'Habblaud: doctor', '--', 'doctor']);
+    expect(cliArgs({ folder: '/p', prompt: '--dangerously-skip-permissions' }).slice(-2)).toEqual(['--', '--dangerously-skip-permissions']);
+    expect(cliArgs({ folder: '/p', prompt: '  ' })).toEqual(['--bg', '-n', 'Habblaud']);
+  });
+
+  it('createCliRunner roda o binário na pasta, sem shell, e lê o id; erro vira a 1ª linha', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hb-spawn-'));
+    const bin = join(dir, 'claude');
+    writeFileSync(
+      bin,
+      `#!/bin/sh\nprintf '%s\\n' "$PWD" "$@" > "${dir}/args"\n[ -f ./trusted ] || { echo 'Workspace not trusted. Run claude once' >&2; exit 1; }\necho 'Starting background service…'\necho 'backgrounded · 7eacc670 · nome'\n`,
+    );
+    chmodSync(bin, 0o755);
+    writeFileSync(join(dir, 'trusted'), '');
+    expect(findClaudeBin({ PATH: `/nao/existe:${dir}` })).toBe(bin);
+    expect(findClaudeBin({ HABBLAUD_CLAUDE_BIN: join(dir, 'nada'), PATH: dir })).toBeUndefined();
+    const run = createCliRunner(bin);
+    expect(await run({ folder: dir, prompt: 'faça $(rm -rf x) && y' })).toEqual({ ok: true, id: '7eacc670' });
+    const args = readFileSync(join(dir, 'args'), 'utf8').trim().split('\n');
+    expect(realpathSync(args[0])).toBe(realpathSync(dir));
+    expect(args.slice(1)).toEqual(['--bg', '-n', 'Habblaud: faça $(rm -rf x) && y', '--', 'faça $(rm -rf x) && y']);
+    expect(await run({ folder: tmpdir(), prompt: 'oi' })).toEqual({ ok: false, error: 'Workspace not trusted. Run claude once' });
+  });
+
+  it('launch: roda em segundo plano; se não der, abre o app e diz por quê', async () => {
+    const opened: string[] = [];
+    const open: Opener = async (url) => (opened.push(url), { ok: true });
+    expect(await launch({ folder: '/p', prompt: 'oi' }, open, async () => ({ ok: true, id: 'a' }))).toEqual({ ok: true, how: 'cli' });
+    expect(opened).toEqual([]);
+    const r = await launch({ folder: '/p', prompt: 'oi' }, open, async () => ({ ok: false, error: 'Workspace not trusted. Run `claude` in /p once' }));
+    expect(r).toMatchObject({ ok: true, how: 'app', note: expect.stringMatching(/ainda não é confiável/) });
+    expect(opened).toEqual([spawnUrl({ folder: '/p', prompt: 'oi' })]);
+    expect(await launch({ folder: '/p', prompt: 'oi' }, open)).toEqual({ ok: true, how: 'app' });
+    expect(await launch({ folder: '/p', prompt: 'oi' }, async () => ({ ok: false, error: 'open: x' }), async () => ({ ok: false, error: 'sem login' }))).toEqual({
+      ok: false,
+      error: 'sem login; e o app não abriu (open: x)',
+    });
+  });
+
+  it('SpawnService: modo direto com o claude e confirmação do auxiliar com how/note', async () => {
+    const s = new SpawnService({ opener: async () => ({ ok: true }), cli: async () => ({ ok: true, id: 'x' }), folderProblem: () => undefined, newId: () => 'c1' });
+    s.submit({ folder: '/p', prompt: 'oi' });
+    await new Promise((ok) => setTimeout(ok, 0));
+    expect(s.get('c1')).toEqual({ id: 'c1', folder: '/p', status: 'opened', how: 'cli' });
+    let n = 0;
+    const d = new SpawnService({ newId: () => `d${++n}` });
+    d.poll();
+    d.submit({ folder: '/p', prompt: 'a' });
+    d.submit({ folder: '/p', prompt: 'b' });
+    d.submit({ folder: '/p', prompt: 'c' });
+    d.poll();
+    d.ack({ results: [{ id: 'd1', ok: true, how: 'cli' }, { id: 'd2', ok: true, how: 'app', note: 'pasta nova' }, { id: 'd3', ok: true }] });
+    expect(d.get('d1')).toMatchObject({ status: 'opened', how: 'cli' });
+    expect(d.get('d2')).toMatchObject({ status: 'opened', how: 'app', note: 'pasta nova' });
+    expect(d.get('d3')).toMatchObject({ status: 'opened', how: 'app' });
   });
 });

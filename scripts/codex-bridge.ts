@@ -20,7 +20,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isClaudeDir } from '../server/accounts/detect';
 import { createCodexQueueRunner, findCodexBin, THREAD_ID, type CodexQueueResult, type CodexQueueRunner } from '../server/messages/codex';
-import { createOpener, folderProblem, parseSpawn, spawnUrl, type Opener } from '../server/spawn/spawn';
+import { createCliRunner, createOpener, findClaudeBin, folderProblem, launch, parseSpawn, type CliRunner, type Opener, type SpawnHow } from '../server/spawn/spawn';
 import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_SPAWN, attachmentsRoot, promptWithAttachments, safeFileName, writeAttachments, type Attachment } from '../server/spawn/attachments';
 import { createWhisperTranscriber, findWhisper, type Transcriber } from '../server/dictation/whisper';
 import { checkFile } from '../server/deliveries/files';
@@ -56,6 +56,9 @@ export interface BridgeResult {
   id: string;
   ok: boolean;
   error?: string;
+  /** Agentes novos: rodando em segundo plano (`cli`) ou na tela do app esperando o Enter (`app`). */
+  how?: SpawnHow;
+  note?: string;
 }
 
 type Rec = Record<string, unknown>;
@@ -167,10 +170,6 @@ export async function round(post: Post, run: CodexQueueRunner, log: (line: strin
   return { state: 'ok', results };
 }
 
-/**
- * Agentes novos pelo escritório: busca os pedidos (POST /api/host/spawn/poll), confere cada um (pasta que existe
- * aqui), monta o link claude://code/new ele mesmo e abre o app do Claude; confirma em /api/host/spawn/ack. Nunca lança.
- */
 /** Anexos de um pedido vindo do Habblaud: nomes seguros, base64 válido, tamanho e quantidade no limite. */
 export function checkFiles(raw: unknown): Attachment[] | { error: string } {
   if (raw === undefined) return [];
@@ -186,12 +185,18 @@ export function checkFiles(raw: unknown): Attachment[] | { error: string } {
   return out;
 }
 
+/**
+ * Agentes novos pelo escritório: busca os pedidos (POST /api/host/spawn/poll), confere cada um (pasta que existe
+ * aqui), roda em segundo plano com o `claude --bg` (com `cli`) ou, se não der, monta o link claude://code/new ele
+ * mesmo e abre o app do Claude; confirma em /api/host/spawn/ack. Nunca lança.
+ */
 export async function spawnRound(
   post: Post,
   open: Opener,
   log: (line: string) => void = () => {},
   problem: (folder: string) => string | undefined = folderProblem,
   write: (id: string, files: readonly Attachment[]) => string[] = (id, files) => writeAttachments(attachmentsRoot(), id, files),
+  cli?: CliRunner,
 ): Promise<RoundResult> {
   const polled = await post('/api/host/spawn/poll', {});
   if (!polled) return { state: 'down' };
@@ -209,16 +214,22 @@ export async function spawnRound(
       log(`✗ agente novo recusado: ${bad}`);
       continue;
     }
-    let r: { ok: boolean; error?: string };
+    let r: { ok: true; how: SpawnHow; note?: string } | { ok: false; error: string };
     try {
       const paths = write(id, files);
-      r = await open(spawnUrl({ folder: req.folder, prompt: promptWithAttachments(req.prompt, paths) }));
+      r = await launch({ folder: req.folder, prompt: promptWithAttachments(req.prompt, paths) }, open, cli);
     } catch (err) {
       r = { ok: false, error: String((err as Error)?.message ?? err) };
     }
-    results.push(r.ok ? { id, ok: true } : { id, ok: false, error: r.error });
+    results.push(r.ok ? { id, ok: true, how: r.how, ...(r.note ? { note: r.note } : {}) } : { id, ok: false, error: r.error });
     const extra = files.length ? ` com ${files.length} anexo${files.length > 1 ? 's' : ''}` : '';
-    log(r.ok ? `✓ agente novo aberto no app do Claude em ${req.folder}${extra}` : `✗ agente novo em ${req.folder}: ${r.error}`);
+    log(
+      !r.ok
+        ? `✗ agente novo em ${req.folder}: ${r.error}`
+        : r.how === 'cli'
+          ? `✓ agente novo rodando em segundo plano em ${req.folder}${extra}`
+          : `✓ agente novo aberto no app do Claude em ${req.folder}${extra}${r.note ? ` (não rodou sozinho: ${r.note})` : ''}`,
+    );
   }
   if (results.length) await post('/api/host/spawn/ack', { results });
   return { state: 'ok', results };
@@ -296,13 +307,16 @@ async function main(): Promise<void> {
   const bin = findCodexBin(process.env);
   const run = bin ? createCodexQueueRunner(bin) : undefined;
   const open = createOpener();
+  const claudeBin = findClaudeBin(process.env);
+  const cli = claudeBin ? createCliRunner(claudeBin) : undefined;
   const post = httpPost(parsed.port);
   const log = (line: string) => console.log(`[codex-bridge] ${line}`);
   log(
     bin
-      ? `Entregando as mensagens do Habblaud (http://127.0.0.1:${parsed.port}) às sessões do Codex com ${bin}, e abrindo os agentes novos no app do Claude. Ctrl+C para parar.`
-      : `Sem o Codex (codex no PATH ou HABBLAUD_CODEX_BIN): só abro os agentes novos do Habblaud (http://127.0.0.1:${parsed.port}) no app do Claude. Ctrl+C para parar.`,
+      ? `Entregando as mensagens do Habblaud (http://127.0.0.1:${parsed.port}) às sessões do Codex com ${bin}, e começando os agentes novos pedidos no escritório. Ctrl+C para parar.`
+      : `Sem o Codex (codex no PATH ou HABBLAUD_CODEX_BIN): só começo os agentes novos pedidos no Habblaud (http://127.0.0.1:${parsed.port}). Ctrl+C para parar.`,
   );
+  log(cli ? `Agentes novos rodam em segundo plano com ${claudeBin} --bg (pasta confiável; senão, no app do Claude).` : 'Sem o claude no PATH (ou HABBLAUD_CLAUDE_BIN): agentes novos abrem no app do Claude e esperam o Enter.');
   const whisper = findWhisper(process.env);
   let transcribe: Transcriber | undefined;
   if ('missing' in whisper) log(`Ditado desligado: falta ${whisper.missing}.`);
@@ -322,7 +336,7 @@ async function main(): Promise<void> {
   }
   let last = '';
   for (;;) {
-    const spawned = await spawnRound(post, open, log);
+    const spawned = await spawnRound(post, open, log, undefined, undefined, cli);
     const r = run ? await round(post, run, log) : spawned;
     const state =
       r.state === 'down'

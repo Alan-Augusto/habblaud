@@ -1,8 +1,8 @@
-// Novo agente (botão na barra do topo): abre uma sessão nova no app desktop do Claude, na pasta escolhida e com o
-// pedido já escrito (POST /api/spawn; server/spawn/spawn.ts). As pastas são os projetos recentes do computador
+// Novo agente (botão na barra do topo): começa uma sessão do Claude Code em segundo plano no Mac, na pasta escolhida e
+// com o pedido (POST /api/spawn; server/spawn/spawn.ts). As pastas são os projetos recentes do computador
 // (GET /api/spawn/folders: histórico de sessões + salas), para escolher com um toque; "Outra pasta" aceita um caminho
 // digitado. O pedido pode levar anexos (POST /api/spawn/attachments, um por arquivo, antes do pedido) e ser ditado
-// (ui/dictation.ts, Whisper local no Mac). O link abre a tela de sessão nova do app preenchida: Enter lá começa.
+// (ui/dictation.ts, Whisper local no Mac). Pasta que o Claude Code não conhece cai no app (Enter lá).
 import { isDemoId } from '../../../shared/timeline';
 import type { OfficeSnapshot } from '../../../shared/types';
 import type { UiContext } from './context';
@@ -21,6 +21,8 @@ interface SpawnInfo {
   id: string;
   status: 'queued' | 'sent' | 'opened' | 'failed';
   error?: string;
+  how?: 'cli' | 'app';
+  note?: string;
 }
 
 export interface FolderOption {
@@ -157,7 +159,7 @@ export class SpawnPanel {
     );
     setHidden(this.dictate.el, true);
     this.fileList = h('ul', { class: 'ui-spawn__files', attrs: { 'aria-label': 'Anexos' } });
-    this.submitBtn = h('button', { class: 'ui-btn ui-perm__btn ui-perm__btn--allow ui-spawn__go', type: 'button', on: { click: () => void this.submit() } }, 'Abrir no app do Claude');
+    this.submitBtn = h('button', { class: 'ui-btn ui-perm__btn ui-perm__btn--allow ui-spawn__go', type: 'button', on: { click: () => void this.submit() } }, 'Começar');
     this.status = h('p', { class: 'ui-rename__hint ui-spawn__status', attrs: { role: 'status', 'aria-live': 'polite' } });
     for (const field of [this.folder, this.prompt] as HTMLElement[]) {
       field.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -189,7 +191,7 @@ export class SpawnPanel {
         this.prompt,
         h('div', { class: 'ui-spawn__tools' }, this.dictate.el, attachBtn, this.fileInput),
         this.fileList,
-        h('p', { class: 'ui-rename__hint', text: 'Prepara uma sessão nova no app do Claude, no Mac, com a pasta e o pedido preenchidos: ela começa quando você aperta Enter lá. Anexos vão para ~/.habblaud/attachments e o pedido leva os caminhos.' }),
+        h('p', { class: 'ui-rename__hint', text: 'Começa na hora uma sessão do Claude Code em segundo plano no Mac, na pasta escolhida; as permissões chegam aqui. Pasta que o Claude Code ainda não conhece abre no app do Claude e espera o Enter lá. Anexos vão para ~/.habblaud/attachments e o pedido leva os caminhos.' }),
         this.submitBtn,
         this.status,
       ),
@@ -358,7 +360,7 @@ export class SpawnPanel {
         });
         ids.push(r.id);
       }
-      this.say('Abrindo o app do Claude…');
+      this.say('Começando no Mac…');
       let info = await api<SpawnInfo>('/api/spawn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -370,11 +372,17 @@ export class SpawnPanel {
         info = await api<SpawnInfo>(`/api/spawn/${encodeURIComponent(info.id)}`);
       }
       if (info.status === 'opened') {
-        this.say('Pronto no app do Claude: confira e aperte Enter lá para começar.');
+        const running = info.how === 'cli';
+        this.say(
+          running
+            ? 'Rodando: a sessão já começou no Mac e aparece no escritório em instantes.'
+            : `Abri no app do Claude: aperte Enter lá para começar.${info.note ? ` Não rodou sozinho: ${info.note}.` : ''}`,
+          !running && !!info.note,
+        );
         this.prompt.value = '';
         this.clearFiles();
         writePref(folder);
-        this.ctx.announce('Agente novo aberto no app do Claude.');
+        this.ctx.announce(running ? 'Agente novo rodando.' : 'Agente novo aberto no app do Claude.');
       } else this.say(info.error ? `Não abriu: ${info.error}` : 'O Mac não confirmou a abertura.', true);
     } catch (err) {
       this.say(`Não abriu: ${(err as Error).message}`, true);

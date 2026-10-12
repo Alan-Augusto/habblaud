@@ -108,7 +108,7 @@ export class TopBar implements UiComponent {
     this.logoutBtn.hidden = true;
     this.spawnPanel = new SpawnPanel(ctx);
     ctx.root.append(this.spawnPanel.el);
-    this.spawnBtn = iconButton(ICONS.newAgent, 'Novo agente: abre uma sessão no app do Claude', () => this.spawnPanel.toggle(this.spawnBtn), 'ui-btn-spawn');
+    this.spawnBtn = iconButton(ICONS.newAgent, 'Novo agente: começa uma sessão do Claude Code no Mac', () => this.spawnPanel.toggle(this.spawnBtn), 'ui-btn-spawn');
     this.spawnBtn.setAttribute('aria-haspopup', 'dialog');
     this.spawnBtn.hidden = true;
     this.version = new VersionChip(ctx, this.settingsBtn);

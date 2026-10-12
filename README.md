@@ -260,7 +260,8 @@ credenciais › Instalar certificado › Certificado de CA), conferindo a impres
 - **Endereço próprio** (ex.: `meuclaude.home`): entra no certificado, mas o celular só o encontra com uma entrada no
   DNS do roteador apontando para o IP do computador. O `<nome>.local` funciona sem configurar nada.
 - **O que o celular pode fazer:** por padrão, aprovar e recusar pedidos de permissão. `HABBLAUD_REMOTE_ALLOW` no
-  `.env` aceita `permissions`, `messages`, `terminal` e `spawn` (abrir agentes novos no app do Claude), separados por
+  `.env` aceita `permissions`, `messages`, `terminal` e `spawn` (começar agentes novos: sessão do Claude Code em segundo plano no Mac, ou o app do Claude numa pasta que o
+  Claude Code ainda não conhece), separados por
   vírgula, ou `none` (só ver).
 - **Fora de casa (Tailscale):** com o Tailscale no computador e no celular, `tailscale serve --bg --https=443
   https+insecure://127.0.0.1:443` publica a porta remota (com login) só para os seus aparelhos, com certificado válido

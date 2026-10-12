@@ -158,7 +158,7 @@ describe('spawnRound com anexos e dictationRound', () => {
     );
     expect(wrote).toEqual(['a:print.png:png']);
     expect(new URL(opened[0]).searchParams.get('q')).toBe('veja\n\nAnexo enviado pelo Habblaud (leia antes de começar):\n- /h/att/print.png');
-    expect(r).toEqual({ state: 'ok', results: [{ id: 'a', ok: true }, { id: 'b', ok: false, error: 'anexo ilegível' }] });
+    expect(r).toEqual({ state: 'ok', results: [{ id: 'a', ok: true, how: 'app' }, { id: 'b', ok: false, error: 'anexo ilegível' }] });
   });
 
   it('dictationRound transcreve e devolve texto e idioma; erro vira resultado', async () => {
@@ -194,6 +194,32 @@ describe('filesRound (arquivos das entregas pelo auxiliar)', () => {
 });
 
 describe('spawnRound (agentes novos pelo auxiliar)', () => {
+  it('com o claude: roda em segundo plano; pasta não confiável cai no app e diz por quê', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const post: Post = async (path, body) => {
+      calls.push([path, body]);
+      return path === '/api/host/spawn/poll'
+        ? { status: 200, json: { spawns: [{ id: 'a', folder: '/conhecida', prompt: 'oi' }, { id: 'b', folder: '/nova', prompt: 'oi' }] } }
+        : { status: 200, json: { ok: true } };
+    };
+    const opened: string[] = [];
+    const ran: string[] = [];
+    const lines: string[] = [];
+    const r = await spawnRound(
+      post,
+      async (url) => (opened.push(url), { ok: true }),
+      (l) => lines.push(l),
+      () => undefined,
+      () => [],
+      async (req) => (ran.push(req.folder), req.folder === '/conhecida' ? { ok: true, id: 'x1' } : { ok: false, error: 'Workspace not trusted. Run `claude` in /nova once' }),
+    );
+    expect(ran).toEqual(['/conhecida', '/nova']);
+    expect(opened).toEqual([spawnUrl({ folder: '/nova', prompt: 'oi' })]);
+    expect(r).toMatchObject({ state: 'ok', results: [{ id: 'a', ok: true, how: 'cli' }, { id: 'b', ok: true, how: 'app', note: expect.stringMatching(/confiável/) }] });
+    expect(calls[1]).toEqual(['/api/host/spawn/ack', { results: (r as { results: unknown }).results }]);
+    expect(lines[0]).toMatch(/segundo plano em \/conhecida/);
+  });
+
   it('monta o link ele mesmo, recusa pasta que não existe e confirma tudo numa chamada', async () => {
     const calls: Array<[string, unknown]> = [];
     const post: Post = async (path, body) => {
@@ -206,7 +232,7 @@ describe('spawnRound (agentes novos pelo auxiliar)', () => {
     const opened: string[] = [];
     const r = await spawnRound(post, async (url) => (opened.push(url), { ok: true }), () => {}, (f) => (f === '/ok' ? undefined : 'pasta não encontrada neste computador'));
     expect(opened).toEqual([spawnUrl({ folder: '/ok', prompt: 'p' })]);
-    expect(r).toEqual({ state: 'ok', results: [{ id: 'a', ok: true }, { id: 'b', ok: false, error: 'pasta não encontrada neste computador' }] });
+    expect(r).toEqual({ state: 'ok', results: [{ id: 'a', ok: true, how: 'app' }, { id: 'b', ok: false, error: 'pasta não encontrada neste computador' }] });
     expect(calls[1]).toEqual(['/api/host/spawn/ack', { results: r.state === 'ok' ? r.results : [] }]);
   });
 

@@ -47,6 +47,11 @@ do meio (0.**3**.0).
   servidor vale para o celular sem recarregar. Tocar no botão do terminal desligado mostra o motivo embaixo dele (no
   celular não há hover para ler a dica).
 - **Ditado na caixa de mensagem** do agente: o mesmo microfone do Novo agente, com o texto entrando onde está o cursor.
+- **Novo agente começa sozinho:** o pedido vira uma sessão do Claude Code em segundo plano no Mac
+  (`claude --bg -n "Habblaud: …" -- <pedido>`, na pasta escolhida), que começa na hora, aparece no escritório e recebe
+  mensagens e permissões pelo Habblaud (`claude attach <id>` abre no terminal). Só numa pasta que o Claude Code já
+  conhece (aviso de confiança aceito no terminal); senão, ou sem o `claude` no PATH (`HABBLAUD_CLAUDE_BIN` aponta
+  outro), continua abrindo a tela preenchida do app do Claude, e a tela diz por quê.
 - **Entregas (botão da caixinha na barra do topo):** o que cada agente terminou, em cartões simples: quem, em que
   projeto, a primeira frase da resposta como título, um resumo curto e miniaturas dos anexos. Um toque abre o pedido,
   o resumo, os anexos e a resposta completa, com **Abrir terminal** e **Responder**; outro toque num anexo abre o

@@ -36,7 +36,7 @@ import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
 import { createBuildReader } from './build';
 import { UpdateChecker } from './updates/checker';
-import { createOpener, SpawnService } from './spawn/spawn';
+import { createCliRunner, createOpener, findClaudeBin, SpawnService } from './spawn/spawn';
 import { AttachmentStore } from './spawn/attachments';
 import { recentFolders } from './spawn/folders';
 import { isDemoId } from '../shared/timeline';
@@ -186,7 +186,10 @@ late.permissions = permissions;
 const codexBin = config.messages && !config.inDocker ? findCodexBin(process.env) : undefined;
 // Novo agente pelo escritório (abre o app do Claude): mesma trava das mensagens. No Docker, o auxiliar do host abre.
 const attachments = config.messages ? new AttachmentStore() : undefined;
-const spawn = config.messages ? new SpawnService(config.inDocker ? { attachments } : { opener: createOpener(), attachments }) : undefined;
+const claudeBin = config.inDocker ? undefined : findClaudeBin(process.env);
+const spawn = config.messages
+  ? new SpawnService(config.inDocker ? { attachments } : { opener: createOpener(), cli: claudeBin ? createCliRunner(claudeBin) : undefined, attachments })
+  : undefined;
 // Ditado: no Docker quem transcreve é o auxiliar do host; no Node, o servidor, se achar o Whisper local.
 const whisper = config.messages && !config.inDocker ? findWhisper() : undefined;
 const dictation = config.messages
