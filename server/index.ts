@@ -37,6 +37,11 @@ import { CodexSource } from './sources/codex/source';
 import { createBuildReader } from './build';
 import { UpdateChecker } from './updates/checker';
 import { createOpener, SpawnService } from './spawn/spawn';
+import { AttachmentStore } from './spawn/attachments';
+import { recentFolders } from './spawn/folders';
+import { isDemoId } from '../shared/timeline';
+import { DictationService } from './dictation/dictation';
+import { createWhisperTranscriber, findWhisper } from './dictation/whisper';
 
 const config = loadConfig();
 const startedAt = Date.now();
@@ -144,7 +149,13 @@ late.permissions = permissions;
 // host (npm run codex:bridge).
 const codexBin = config.messages && !config.inDocker ? findCodexBin(process.env) : undefined;
 // Novo agente pelo escritório (abre o app do Claude): mesma trava das mensagens. No Docker, o auxiliar do host abre.
-const spawn = config.messages ? new SpawnService(config.inDocker ? {} : { opener: createOpener() }) : undefined;
+const attachments = config.messages ? new AttachmentStore() : undefined;
+const spawn = config.messages ? new SpawnService(config.inDocker ? { attachments } : { opener: createOpener(), attachments }) : undefined;
+// Ditado: no Docker quem transcreve é o auxiliar do host; no Node, o servidor, se achar o Whisper local.
+const whisper = config.messages && !config.inDocker ? findWhisper() : undefined;
+const dictation = config.messages
+  ? new DictationService(whisper && !('missing' in whisper) ? { transcriber: createWhisperTranscriber(whisper) } : {})
+  : undefined;
 const messages = config.messages
   ? new MessageRegistry({
       office,
@@ -200,6 +211,15 @@ const api = createApiHandler({
   permissions: permissions ? createPermissionRoutes(permissions) : undefined,
   messages: messages ? createMessageRoutes(messages) : undefined,
   spawn,
+  attachments,
+  dictation,
+  spawnFolders: async () => {
+    const snap = hub.current();
+    const last = new Map<string, number>();
+    for (const a of snap.agents) last.set(a.roomId, Math.max(last.get(a.roomId) ?? 0, a.lastEventAt ?? 0));
+    const rooms = snap.rooms.filter((r) => !isDemoId(r.id)).map((r) => ({ path: r.path, lastAt: last.get(r.id) ?? 0 }));
+    return recentFolders(history ? await history.list().catch(() => []) : [], rooms);
+  },
   codexLive,
   stats,
   updates,

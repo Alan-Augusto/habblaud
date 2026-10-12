@@ -15,6 +15,9 @@ import type { Hub } from './sse';
 import { handleStatsRoute } from './stats';
 import type { TerminalStreams } from './terminal';
 import type { SpawnService } from '../spawn/spawn';
+import { ATTACHMENT_BODY_MAX, parseAttachment, type AttachmentStore } from '../spawn/attachments';
+import type { SpawnFolder } from '../spawn/folders';
+import { AUDIO_BODY_MAX, type DictationService } from '../dictation/dictation';
 
 export interface ApiDeps {
   office: Office;
@@ -53,6 +56,12 @@ export interface ApiDeps {
   codexLive?: CodexLive;
   /** Novo agente pelo escritório (/api/spawn e, para o auxiliar do host, /api/host/spawn/*; server/spawn/spawn.ts). */
   spawn?: SpawnService;
+  /** Pastas sugeridas no "Novo agente" (GET /api/spawn/folders; spawn/folders.ts): projetos recentes. */
+  spawnFolders?: () => Promise<SpawnFolder[]>;
+  /** Anexos do "Novo agente" (POST /api/spawn/attachments; spawn/attachments.ts). */
+  attachments?: AttachmentStore;
+  /** Ditado (/api/dictation e, para o auxiliar do host, /api/host/dictation/*; dictation/dictation.ts). */
+  dictation?: DictationService;
   /** Renomeia a sala (POST /api/rooms/rename {id, name}; vazio volta ao padrão). Devolve o nome em uso, ou undefined se a sala não existe. */
   renameRoom?: (id: string, name: string) => string | undefined;
   /** Estatísticas do "Meu dia" (GET /api/stats, http/stats.ts). */
@@ -122,7 +131,7 @@ export function sendJson(res: ServerResponse, status: number, body: unknown): vo
 }
 
 /** Lê o corpo JSON. Exige `Content-Type: application/json` (barreira contra CSRF; ver http/guard.ts). */
-export function readJson(req: IncomingMessage): Promise<unknown> {
+export function readJson(req: IncomingMessage, max = MAX_BODY): Promise<unknown> {
   if (!isJsonContentType(req.headers['content-type'])) {
     req.resume();
     return Promise.reject(new HttpError(415, 'envie o corpo como JSON (Content-Type: application/json)'));
@@ -133,11 +142,11 @@ export function readJson(req: IncomingMessage): Promise<unknown> {
     req.on('data', (c: Buffer) => {
       size += c.length;
       // Grande demais: continua drenando (sem guardar) para conseguir responder 413.
-      if (size > MAX_BODY) return void fail(new HttpError(413, 'corpo grande demais'));
+      if (size > max) return void fail(new HttpError(413, 'corpo grande demais'));
       chunks.push(c);
     });
     req.on('end', () => {
-      if (size > MAX_BODY) return;
+      if (size > max) return;
       const raw = Buffer.concat(chunks).toString('utf8');
       if (!raw.trim()) return ok({});
       try {
@@ -389,6 +398,24 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       if (!spawn) sendJson(res, 403, { error: 'novo agente pelo escritório desligado' });
       else if (!trusted(req, 'spawn')) sendJson(res, 403, { error: denied(req, 'agentes novos só são abertos pelo próprio computador (http://localhost)') });
       else if (path === '/api/spawn' && isRead) sendJson(res, 200, { available: spawn.available(), mode: spawn.mode() });
+      else if (path === '/api/spawn/folders') {
+        if (!isRead) methodNotAllowed(res, 'GET');
+        else (deps.spawnFolders ?? (async () => []))().then((folders) => sendJson(res, 200, { folders }), (err) => fail(res, err));
+      } else if (path === '/api/spawn/attachments') {
+        const store = deps.attachments;
+        if (method !== 'POST') methodNotAllowed(res, 'POST');
+        else if (!store) sendJson(res, 403, { error: 'anexos desligados' });
+        else
+          readJson(req, ATTACHMENT_BODY_MAX)
+            .then((body) => {
+              const a = parseAttachment(body);
+              if ('error' in a) return sendJson(res, 400, { error: a.error });
+              const r = store.put(a);
+              if ('error' in r) return sendJson(res, 429, { error: r.error });
+              sendJson(res, 201, { id: r.id, name: a.name, size: a.data.length });
+            })
+            .catch((err) => fail(res, err));
+      }
       else if (path === '/api/spawn' && method === 'POST') {
         readJson(req)
           .then((body) => {
@@ -402,6 +429,47 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         if (info) sendJson(res, 200, info);
         else sendJson(res, 404, { error: 'pedido desconhecido' });
       } else methodNotAllowed(res, path === '/api/spawn' ? 'GET, POST' : 'GET');
+      return true;
+    }
+    if (path === '/api/dictation' || path.startsWith('/api/dictation/')) {
+      // Ditado do "Novo agente": a mesma trava dele (o texto vira um pedido para um agente).
+      const dictation = deps.dictation;
+      if (!dictation) sendJson(res, 403, { error: 'ditado desligado' });
+      else if (!trusted(req, 'spawn')) sendJson(res, 403, { error: denied(req, 'o ditado só funciona pelo próprio computador (http://localhost)') });
+      else if (path === '/api/dictation' && isRead) sendJson(res, 200, { available: dictation.available() });
+      else if (path === '/api/dictation' && method === 'POST') {
+        readJson(req, AUDIO_BODY_MAX)
+          .then((body) => {
+            const r = dictation.submit(body);
+            if ('dictation' in r) return sendJson(res, 201, r.dictation);
+            sendJson(res, r.error === 'invalid' ? 400 : r.error === 'too-many' ? 429 : 409, { error: r.reason });
+          })
+          .catch((err) => fail(res, err));
+      } else if (path !== '/api/dictation' && isRead) {
+        const info = dictation.get(decodeURIComponent(path.slice('/api/dictation/'.length)));
+        if (info) sendJson(res, 200, info);
+        else sendJson(res, 404, { error: 'ditado desconhecido' });
+      } else methodNotAllowed(res, path === '/api/dictation' ? 'GET, POST' : 'GET');
+      return true;
+    }
+    if (path === '/api/host/dictation/poll' || path === '/api/host/dictation/ack') {
+      // Só o auxiliar do host, pela porta local (nunca pela remota); fora do Docker, só pelo loopback.
+      const dictation = deps.dictation;
+      if (method !== 'POST') methodNotAllowed(res, 'POST');
+      else if (!dictation) sendJson(res, 403, { error: 'ditado desligado' });
+      else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, 'só o auxiliar do próprio computador') });
+      } else if (path === '/api/host/dictation/poll') {
+        req.resume();
+        sendJson(res, 200, { dictations: dictation.poll() });
+      } else {
+        readJson(req, 512 * 1024)
+          .then((body) => {
+            dictation.ack(body);
+            sendJson(res, 200, { ok: true });
+          })
+          .catch((err) => fail(res, err));
+      }
       return true;
     }
     if (path === '/api/host/spawn/poll' || path === '/api/host/spawn/ack') {

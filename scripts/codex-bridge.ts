@@ -11,6 +11,9 @@
 //
 // Binário: HABBLAUD_CODEX_BIN ou `codex` do PATH. Nunca roda o Codex com -c, --enable, --disable nem --no-daemon, e
 // confere cada mensagem antes (id de thread, pasta do Codex que existe). O texto das mensagens nunca vai para a tela.
+// Também abre os agentes novos do escritório no app do Claude (com os anexos gravados em ~/.habblaud/attachments/) e
+// transcreve o ditado com o Whisper local (whisper-cli + ffmpeg + modelo; ver server/dictation/whisper.ts), a cada
+// 0,5 s, só quando o Whisper está instalado.
 // Ctrl+C para parar.
 import { statSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
@@ -18,10 +21,14 @@ import { pathToFileURL } from 'node:url';
 import { isClaudeDir } from '../server/accounts/detect';
 import { createCodexQueueRunner, findCodexBin, THREAD_ID, type CodexQueueResult, type CodexQueueRunner } from '../server/messages/codex';
 import { createOpener, folderProblem, parseSpawn, spawnUrl, type Opener } from '../server/spawn/spawn';
+import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_SPAWN, attachmentsRoot, promptWithAttachments, safeFileName, writeAttachments, type Attachment } from '../server/spawn/attachments';
+import { createWhisperTranscriber, findWhisper, type Transcriber } from '../server/dictation/whisper';
 
 export const DEFAULT_PORT = 4747;
 /** Intervalo entre as rodadas. */
 export const POLL_MS = 2_000;
+/** Intervalo do ditado (a pessoa espera o texto). */
+export const DICTATION_POLL_MS = 500;
 const REQUEST_TIMEOUT_MS = 5_000;
 
 const USAGE = `Uso: npm run codex:bridge [-- opções]
@@ -162,11 +169,27 @@ export async function round(post: Post, run: CodexQueueRunner, log: (line: strin
  * Agentes novos pelo escritório: busca os pedidos (POST /api/host/spawn/poll), confere cada um (pasta que existe
  * aqui), monta o link claude://code/new ele mesmo e abre o app do Claude; confirma em /api/host/spawn/ack. Nunca lança.
  */
+/** Anexos de um pedido vindo do Habblaud: nomes seguros, base64 válido, tamanho e quantidade no limite. */
+export function checkFiles(raw: unknown): Attachment[] | { error: string } {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || raw.length > ATTACHMENTS_PER_SPAWN) return { error: 'anexos inválidos' };
+  const out: Attachment[] = [];
+  for (const f of raw) {
+    const r = rec(f);
+    if (!r || typeof r.data !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(r.data)) return { error: 'anexo ilegível' };
+    const data = Buffer.from(r.data, 'base64');
+    if (!data.length || data.length > ATTACHMENT_MAX_BYTES) return { error: 'anexo vazio ou grande demais' };
+    out.push({ name: safeFileName(typeof r.name === 'string' ? r.name : 'arquivo'), type: typeof r.type === 'string' ? r.type : '', data });
+  }
+  return out;
+}
+
 export async function spawnRound(
   post: Post,
   open: Opener,
   log: (line: string) => void = () => {},
   problem: (folder: string) => string | undefined = folderProblem,
+  write: (id: string, files: readonly Attachment[]) => string[] = (id, files) => writeAttachments(attachmentsRoot(), id, files),
 ): Promise<RoundResult> {
   const polled = await post('/api/host/spawn/poll', {});
   if (!polled) return { state: 'down' };
@@ -177,22 +200,58 @@ export async function spawnRound(
     const id = typeof rec(raw)?.id === 'string' ? (rec(raw)!.id as string) : '';
     if (!id) continue;
     const req = parseSpawn(raw);
-    const bad = 'error' in req ? req.error : problem(req.folder);
-    if (bad || 'error' in req) {
+    const files = checkFiles(rec(raw)?.files);
+    const bad = 'error' in req ? req.error : 'error' in files ? files.error : problem(req.folder);
+    if (bad || 'error' in req || 'error' in files) {
       results.push({ id, ok: false, error: bad ?? 'pedido inválido' });
       log(`✗ agente novo recusado: ${bad}`);
       continue;
     }
     let r: { ok: boolean; error?: string };
     try {
-      r = await open(spawnUrl(req));
+      const paths = write(id, files);
+      r = await open(spawnUrl({ folder: req.folder, prompt: promptWithAttachments(req.prompt, paths) }));
     } catch (err) {
-      r = { ok: false, error: String(err) };
+      r = { ok: false, error: String((err as Error)?.message ?? err) };
     }
     results.push(r.ok ? { id, ok: true } : { id, ok: false, error: r.error });
-    log(r.ok ? `✓ agente novo aberto no app do Claude em ${req.folder}` : `✗ agente novo em ${req.folder}: ${r.error}`);
+    const extra = files.length ? ` com ${files.length} anexo${files.length > 1 ? 's' : ''}` : '';
+    log(r.ok ? `✓ agente novo aberto no app do Claude em ${req.folder}${extra}` : `✗ agente novo em ${req.folder}: ${r.error}`);
   }
   if (results.length) await post('/api/host/spawn/ack', { results });
+  return { state: 'ok', results };
+}
+
+/**
+ * Ditado: busca os áudios (POST /api/host/dictation/poll), transcreve cada um com o Whisper local e devolve o texto e
+ * o idioma em /api/host/dictation/ack. O texto nunca vai para a tela. Nunca lança.
+ */
+export async function dictationRound(post: Post, transcribe: Transcriber, log: (line: string) => void = () => {}): Promise<RoundResult> {
+  const polled = await post('/api/host/dictation/poll', {});
+  if (!polled) return { state: 'down' };
+  const list = rec(polled.json)?.dictations;
+  if (polled.status !== 200 || !Array.isArray(list)) return { state: 'refused', status: polled.status };
+  const results: Array<BridgeResult & { text?: string; lang?: string }> = [];
+  for (const raw of list) {
+    const r = rec(raw);
+    const id = typeof r?.id === 'string' ? r.id : '';
+    if (!id) continue;
+    if (typeof r?.data !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(r.data)) {
+      results.push({ id, ok: false, error: 'áudio ilegível' });
+      continue;
+    }
+    const started = Date.now();
+    try {
+      const t = await transcribe(Buffer.from(r.data, 'base64'), typeof r.type === 'string' ? r.type : '');
+      results.push({ id, ok: true, text: t.text, lang: t.lang });
+      log(`✓ ditado transcrito (${t.lang || '?'}, ${((Date.now() - started) / 1000).toFixed(1)} s)`);
+    } catch (err) {
+      const error = (err as Error)?.message || 'o Whisper falhou';
+      results.push({ id, ok: false, error });
+      log(`✗ ditado: ${error}`);
+    }
+  }
+  if (results.length) await post('/api/host/dictation/ack', { results });
   return { state: 'ok', results };
 }
 
@@ -212,6 +271,20 @@ async function main(): Promise<void> {
       ? `Entregando as mensagens do Habblaud (http://127.0.0.1:${parsed.port}) às sessões do Codex com ${bin}, e abrindo os agentes novos no app do Claude. Ctrl+C para parar.`
       : `Sem o Codex (codex no PATH ou HABBLAUD_CODEX_BIN): só abro os agentes novos do Habblaud (http://127.0.0.1:${parsed.port}) no app do Claude. Ctrl+C para parar.`,
   );
+  const whisper = findWhisper(process.env);
+  if ('missing' in whisper) log(`Ditado desligado: falta ${whisper.missing}.`);
+  else {
+    log(`Ditado: Whisper local (${whisper.model.split('/').pop()}), idiomas ${whisper.langs.join('/')} detectados sozinhos.`);
+    const transcribe = createWhisperTranscriber(whisper);
+    if (!parsed.once) {
+      void (async () => {
+        for (;;) {
+          await dictationRound(post, transcribe, log);
+          await new Promise((ok) => setTimeout(ok, DICTATION_POLL_MS));
+        }
+      })();
+    }
+  }
   let last = '';
   for (;;) {
     const spawned = await spawnRound(post, open, log);

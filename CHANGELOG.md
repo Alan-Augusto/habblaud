@@ -34,6 +34,19 @@ do meio (0.**3**.0).
   Enter no app. No modo Node o servidor abre o link; no Docker, o auxiliar do host (`npm run codex:bridge`, que agora
   roda também sem o Codex) busca o pedido, confere a pasta e abre. Pelo celular, só com `spawn` em
   `HABBLAUD_REMOTE_ALLOW`.
+- **Novo agente: projetos recentes, anexos e ditado.** A pasta se escolhe com um toque numa lista dos projetos em que
+  você trabalhou por último (`GET /api/spawn/folders`: o `cwd` do histórico de sessões e as salas; worktrees de agentes
+  contam como o projeto, pastas temporárias ficam de fora); "Outra pasta" aceita um caminho. Imagens e arquivos (até 8,
+  15 MB cada) vão por `POST /api/spawn/attachments` e são gravados por quem abre o link em
+  `~/.habblaud/attachments/<data>-<id>/` (pasta 700, arquivos 600; `HABBLAUD_ATTACHMENTS_DIR` muda o lugar), e o pedido
+  ganha a lista dos caminhos. O microfone grava no navegador e o **Whisper local** do Mac transcreve
+  (`whisper-cli` + `ffmpeg` + um modelo multilíngue `ggml-*.bin`; a voz não sai do computador), detectando sozinho
+  português ou inglês (`HABBLAUD_DICTATION_LANGS`; outra língua detectada é refeita na primeira da lista). No Docker
+  quem transcreve é o auxiliar do host, a cada 0,5 s.
+- O acesso da página (`GET /api/access`) é relido a cada reconexão: mudar `HABBLAUD_REMOTE_ALLOW` e reiniciar o
+  servidor vale para o celular sem recarregar. Tocar no botão do terminal desligado mostra o motivo embaixo dele (no
+  celular não há hover para ler a dica).
+
 
 ### Segurança
 
@@ -76,6 +89,7 @@ pasta de dados do Habblaud; voltar para a 0.7 faz os personagens escolhidos sumi
 
 ### Corrigido
 
+- Celular: tocar num campo de texto não dá mais zoom (o Safari do iPhone amplia campos com letra menor que 16 px).
 - No Windows, as mensagens ao Codex procuravam `codex` no PATH e achavam o script que o npm instala ao lado do
   executável: o Habblaud dizia que as mensagens estavam ligadas, mas cada entrega falhava, porque o script não roda
   sem shell. Agora a busca é pelo `codex.exe`. Com o Codex instalado só pelo npm, aponte `HABBLAUD_CODEX_BIN` para um

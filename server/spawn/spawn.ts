@@ -5,12 +5,14 @@
 // - Docker: o auxiliar do host (scripts/codex-bridge.ts, npm run codex:bridge) busca os pedidos em
 //   POST /api/host/spawn/poll, confere a pasta, abre o link e confirma em POST /api/host/spawn/ack.
 // O link abre a tela de sessão nova do app, preenchida: a sessão começa quando a pessoa aperta Enter lá.
-// Sem shell (execFile) e com prazo.
+// Anexos (spawn/attachments.ts): quem abre o link grava os arquivos em ~/.habblaud/attachments/ e põe os caminhos no fim
+// do pedido. Sem shell (execFile) e com prazo.
 // Node puro e sem dependências: também é importado pelo auxiliar do host (via tsx).
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
+import { attachmentsRoot, promptWithAttachments, writeAttachments, type Attachment, type AttachmentStore } from './attachments';
 
 /** Tamanho máximo do pedido (o link inteiro vai pela linha de comando do `open`). */
 export const PROMPT_MAX = 8_000;
@@ -90,7 +92,14 @@ export function createOpener(platform: NodeJS.Platform = process.platform, timeo
 interface Entry {
   info: SpawnInfo;
   req: SpawnRequest;
+  files: Attachment[];
   at: number;
+}
+
+/** Um pedido para o auxiliar do host, com os anexos em base64. */
+export interface PolledSpawn extends SpawnRequest {
+  id: string;
+  files: Array<{ name: string; type: string; data: string }>;
 }
 
 export interface SpawnServiceOptions {
@@ -98,6 +107,10 @@ export interface SpawnServiceOptions {
   opener?: Opener;
   /** Confere a pasta antes de abrir no modo direto (padrão: statSync). */
   folderProblem?: (folder: string) => string | undefined;
+  /** Anexos enviados antes do pedido (POST /api/spawn/attachments); ausente = pedidos sem anexos. */
+  attachments?: AttachmentStore;
+  /** Modo direto: grava os anexos e devolve os caminhos (padrão: ~/.habblaud/attachments/). */
+  writeFiles?: (spawnId: string, files: readonly Attachment[]) => string[];
   now?: () => number;
   newId?: () => string;
 }
@@ -132,8 +145,16 @@ export class SpawnService {
     let open = 0;
     for (const e of this.entries.values()) if (e.info.status === 'queued' || e.info.status === 'sent') open++;
     if (open >= MAX_OPEN) return { error: 'too-many', reason: `já há ${MAX_OPEN} agentes novos esperando para abrir` };
+    const ids = raw && typeof raw === 'object' ? (raw as { attachments?: unknown }).attachments : undefined;
+    let files: Attachment[] = [];
+    if (ids !== undefined && !(Array.isArray(ids) && !ids.length)) {
+      if (!this.opts.attachments) return { error: 'invalid', reason: 'anexos desligados' };
+      const taken = this.opts.attachments.take(ids);
+      if ('error' in taken) return { error: 'invalid', reason: taken.error };
+      files = taken;
+    }
     const info: SpawnInfo = { id: this.opts.newId?.() ?? randomUUID(), folder: req.folder, status: 'queued' };
-    const entry: Entry = { info, req, at: this.now() };
+    const entry: Entry = { info, req, files, at: this.now() };
     this.entries.set(info.id, entry);
     if (this.opts.opener) void this.openDirect(entry, this.opts.opener);
     return { spawn: { ...info } };
@@ -146,15 +167,17 @@ export class SpawnService {
   }
 
   /** Rodada do auxiliar: marca presença e entrega os pedidos na fila (ele monta o link: não abre um vindo de fora). */
-  poll(): Array<{ id: string } & SpawnRequest> {
+  poll(): PolledSpawn[] {
     this.hostSeenAt = this.now();
     this.prune();
-    const out: Array<{ id: string } & SpawnRequest> = [];
+    const out: PolledSpawn[] = [];
     for (const e of this.entries.values()) {
       if (e.info.status !== 'queued') continue;
       e.info.status = 'sent';
       e.at = this.now();
-      out.push({ id: e.info.id, folder: e.req.folder, prompt: e.req.prompt });
+      const files = e.files.map((f) => ({ name: f.name, type: f.type, data: f.data.toString('base64') }));
+      e.files = [];
+      out.push({ id: e.info.id, folder: e.req.folder, prompt: e.req.prompt, files });
     }
     return out;
   }
@@ -173,10 +196,21 @@ export class SpawnService {
   private async openDirect(e: Entry, opener: Opener): Promise<void> {
     e.info.status = 'sent';
     const problem = (this.opts.folderProblem ?? folderProblem)(e.req.folder);
-    this.resolve(e, problem ? { ok: false, error: problem } : await opener(spawnUrl(e.req)).catch(() => ({ ok: false as const, error: 'falhou ao abrir o app' })));
+    if (problem) return this.resolve(e, { ok: false, error: problem });
+    let paths: string[];
+    try {
+      paths = (this.opts.writeFiles ?? ((id, files) => writeAttachments(attachmentsRoot(), id, files)))(e.info.id, e.files);
+    } catch (err) {
+      return this.resolve(e, { ok: false, error: `não deu para gravar os anexos (${(err as Error).message})`.slice(0, ERROR_MAX) });
+    } finally {
+      e.files = [];
+    }
+    const req = { folder: e.req.folder, prompt: promptWithAttachments(e.req.prompt, paths) };
+    this.resolve(e, await opener(spawnUrl(req)).catch(() => ({ ok: false as const, error: 'falhou ao abrir o app' })));
   }
 
   private resolve(e: Entry, r: OpenResult): void {
+    e.files = [];
     e.info.status = r.ok ? 'opened' : 'failed';
     if (!r.ok) e.info.error = r.error;
     e.at = this.now();

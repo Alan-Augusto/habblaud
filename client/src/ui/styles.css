@@ -4401,6 +4401,13 @@
   letter-spacing: 0.02em;
 }
 
+.ui-term-cta__why {
+  margin: -4px 0 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ui-danger, #ff8a8a);
+}
+
 .ui-term-cta .ui-kbd {
   margin-left: auto;
   min-width: 18px;
@@ -7608,6 +7615,191 @@ html.is-replay #world {
   margin-top: 10px;
   width: 100%;
   justify-content: center;
+}
+
+.ui-spawn__folders {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 232px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ui-spawn__folder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'name when' 'path when';
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-bg-soft);
+  color: var(--ui-text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.ui-spawn__folder:hover {
+  border-color: var(--ui-line-strong);
+}
+
+.ui-spawn__folder.is-on {
+  border-color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent) 14%, transparent);
+}
+
+.ui-spawn__folder:focus-visible,
+.ui-spawn__other:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 1px;
+}
+
+.ui-spawn__folder-name {
+  grid-area: name;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-spawn__folder-path {
+  grid-area: path;
+  font-size: 11.5px;
+  color: var(--ui-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-spawn__folder-when {
+  grid-area: when;
+  font-size: 11px;
+  color: var(--ui-faint);
+}
+
+.ui-spawn__other {
+  margin: 6px 0 0;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: var(--ui-accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ui-spawn__other.is-on {
+  color: var(--ui-muted);
+}
+
+.ui-spawn__path {
+  margin-top: 4px;
+}
+
+.ui-spawn__tools {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ui-spawn__tools .ui-btn {
+  flex: 1 1 0;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  touch-action: manipulation;
+}
+
+.ui-dictate.is-recording {
+  border-color: var(--ui-danger, #ff8a8a);
+  color: var(--ui-danger, #ff8a8a);
+  animation: ui-dictate-pulse 1.2s ease-in-out infinite;
+}
+
+.ui-dictate.is-working {
+  opacity: 0.75;
+}
+
+@keyframes ui-dictate-pulse {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-danger, #ff8a8a) 25%, transparent);
+  }
+}
+
+.ui-spawn__files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ui-spawn__files:empty {
+  display: none;
+}
+
+.ui-spawn__file {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-bg-soft);
+}
+
+.ui-spawn__thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.ui-spawn__thumb--doc {
+  display: grid;
+  place-items: center;
+  font: 600 9px/1 var(--font-px);
+  color: var(--ui-muted);
+  border: 1px solid var(--ui-line-strong);
+}
+
+.ui-spawn__file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.ui-spawn__file-size {
+  font-size: 11px;
+  color: var(--ui-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-dictate.is-recording {
+    animation: none;
+  }
+}
+
+/* Celular: o Safari do iPhone dá zoom ao focar um campo com letra menor que 16 px; com 16 px ele não dá (e o
+   pinça para ampliar continua funcionando). Vale para todos os campos do app. */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+  html {
+    touch-action: manipulation;
+  }
 }
 
 .ui-spawn__status:empty {

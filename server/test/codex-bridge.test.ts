@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkMessage, httpPost, parseArgs, round, spawnRound, type Post } from '../../scripts/codex-bridge';
+import { checkMessage, dictationRound, httpPost, parseArgs, round, spawnRound, type Post } from '../../scripts/codex-bridge';
 import { spawnUrl } from '../spawn/spawn';
 import { AccountsService } from '../accounts/service';
 import { createApiHandler } from '../http/app';
@@ -139,6 +139,43 @@ describe('rotas do auxiliar do Codex', () => {
     expect(parseArgs(['-h'], {})).toBe('help');
     expect(() => parseArgs(['--port', 'x'], {})).toThrow(/--port/);
     expect(() => parseArgs(['--xyz'], {})).toThrow(/desconhecida/);
+  });
+});
+
+describe('spawnRound com anexos e dictationRound', () => {
+  it('grava os anexos aqui e o link leva os caminhos; anexo ilegível recusa o pedido', async () => {
+    const post: Post = async (path) =>
+      path === '/api/host/spawn/poll'
+        ? { status: 200, json: { spawns: [
+            { id: 'a', folder: '/ok', prompt: 'veja', files: [{ name: '../print.png', type: 'image/png', data: Buffer.from('png').toString('base64') }] },
+            { id: 'b', folder: '/ok', prompt: '', files: [{ name: 'x', data: 'não é base64!' }] },
+          ] } }
+        : { status: 200, json: { ok: true } };
+    const opened: string[] = [];
+    const wrote: string[] = [];
+    const r = await spawnRound(post, async (url) => (opened.push(url), { ok: true }), () => {}, () => undefined, (id, files) =>
+      files.map((f) => (wrote.push(`${id}:${f.name}:${f.data.toString()}`), `/h/att/${f.name}`)),
+    );
+    expect(wrote).toEqual(['a:print.png:png']);
+    expect(new URL(opened[0]).searchParams.get('q')).toBe('veja\n\nAnexo enviado pelo Habblaud (leia antes de começar):\n- /h/att/print.png');
+    expect(r).toEqual({ state: 'ok', results: [{ id: 'a', ok: true }, { id: 'b', ok: false, error: 'anexo ilegível' }] });
+  });
+
+  it('dictationRound transcreve e devolve texto e idioma; erro vira resultado', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const post: Post = async (path, body) => {
+      calls.push([path, body]);
+      return path === '/api/host/dictation/poll'
+        ? { status: 200, json: { dictations: [{ id: 'd1', type: 'audio/mp4', data: Buffer.from('ok').toString('base64') }, { id: 'd2', type: 'audio/mp4', data: Buffer.from('ruim').toString('base64') }] } }
+        : { status: 200, json: { ok: true } };
+    };
+    const r = await dictationRound(post, async (buf) => {
+      if (buf.toString() === 'ruim') throw new Error('o Whisper falhou (x)');
+      return { text: 'crie um agente', lang: 'pt' };
+    });
+    expect(r).toEqual({ state: 'ok', results: [{ id: 'd1', ok: true, text: 'crie um agente', lang: 'pt' }, { id: 'd2', ok: false, error: 'o Whisper falhou (x)' }] });
+    expect(calls[1][0]).toBe('/api/host/dictation/ack');
+    expect(await dictationRound(async () => null, async () => ({ text: '', lang: '' }))).toEqual({ state: 'down' });
   });
 });
 

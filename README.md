@@ -262,6 +262,14 @@ credenciais › Instalar certificado › Certificado de CA), conferindo a impres
 - **O que o celular pode fazer:** por padrão, aprovar e recusar pedidos de permissão. `HABBLAUD_REMOTE_ALLOW` no
   `.env` aceita `permissions`, `messages`, `terminal` e `spawn` (abrir agentes novos no app do Claude), separados por
   vírgula, ou `none` (só ver).
+- **Fora de casa (Tailscale):** com o Tailscale no computador e no celular, `tailscale serve --bg --https=443
+  https+insecure://127.0.0.1:443` publica a porta remota (com login) só para os seus aparelhos, com certificado válido
+  em `https://<computador>.<tailnet>.ts.net`; ponha esse nome em `HABBLAUD_ALLOWED_HOSTS`. Aponte sempre para a porta
+  remota, nunca para a 4747 (que não pede login).
+- **Ditado no Novo agente:** precisa de `whisper-cli` e `ffmpeg` (`brew install whisper-cpp ffmpeg`) e de um modelo
+  multilíngue em `~/.local/share/whisper/` (`ggml-small.bin` acerta mais que o `ggml-base.bin`; os `.en` só entendem
+  inglês). Sem eles o botão Ditar não aparece. `HABBLAUD_WHISPER_BIN`, `HABBLAUD_FFMPEG_BIN`, `HABBLAUD_WHISPER_MODEL`
+  e `HABBLAUD_DICTATION_LANGS` (padrão `pt,en`) ajustam.
 - **Sessão:** 30 dias; trocar a senha (rodar o setup de novo) derruba todas. Depois de 5 senhas erradas seguidas, cada
   nova tentativa espera de 1 s até 5 min.
 - **IP mudou?** O `docker:up` refaz o certificado do servidor quando falta o IP novo ou quando faltam 30 dias para
