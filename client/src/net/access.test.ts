@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { access, fallbackAccess, loadAccess, remoteLogout, setAccess } from './access';
+import { access, fallbackAccess, loadAccess, onAccessChange, remoteLogout, setAccess } from './access';
 
 afterEach(() => setAccess(null));
 
@@ -16,6 +16,21 @@ describe('access', () => {
     const ok = (() => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))) as unknown as typeof fetch;
     expect(await loadAccess(ok)).toEqual(body);
     expect(access().permissions).toBe(true);
+  });
+  it('reler o acesso avisa só quando muda (terminal liberado com a página do celular aberta)', async () => {
+    const base = { remote: true, local: false, permissions: true, messages: true, terminal: false, spawn: true };
+    const reply = (b: object) => (() => Promise.resolve(new Response(JSON.stringify(b), { status: 200 }))) as unknown as typeof fetch;
+    let calls = 0;
+    const off = onAccessChange(() => calls++);
+    await loadAccess(reply(base));
+    await loadAccess(reply(base));
+    expect(calls).toBe(1);
+    await loadAccess(reply({ ...base, terminal: true }));
+    expect(calls).toBe(2);
+    expect(access().terminal).toBe(true);
+    off();
+    await loadAccess(reply(base));
+    expect(calls).toBe(2);
   });
   it('resposta torta é ignorada', async () => {
     const bad = (() => Promise.resolve(new Response('{"remote":"sim"}', { status: 200 }))) as unknown as typeof fetch;

@@ -207,6 +207,9 @@ class AgentView {
   private followBtn: HTMLButtonElement;
   private termBtn: HTMLButtonElement;
   private termLabel: HTMLElement;
+  /** Por que o terminal não abre: no celular não há hover para ler o title, então o toque mostra o motivo aqui. */
+  private termWhy: HTMLElement;
+  private termWhyTimer: ReturnType<typeof setTimeout> | null = null;
   private alert: HTMLElement;
   private alertText: HTMLElement;
   /**
@@ -304,6 +307,8 @@ class AgentView {
       h('kbd', { class: 'ui-kbd', text: 'T', attrs: { 'aria-hidden': 'true' } }),
     );
 
+    this.termWhy = h('p', { class: 'ui-term-cta__why', hidden: true, attrs: { role: 'status' } });
+
     this.alertText = h('p', { class: 'ui-alert__text' });
     this.alertQuestions = h('div', { class: 'ui-ask', hidden: true });
     this.alertAnswerHint = h('p', { class: 'ui-ask__answer-hint', hidden: true, text: 'Com o plugin habblaud-permissoes (npm run mod:install), dá para responder as perguntas por aqui.' });
@@ -393,6 +398,7 @@ class AgentView {
       this.gone,
       statusRow,
       this.termBtn,
+      this.termWhy,
       this.alert,
       this.perm.el,
       this.shellBox,
@@ -439,7 +445,17 @@ class AgentView {
 
   /** Abre (ou fecha) o terminal deste agente; desligado sem acesso local ou depois que ele saiu. */
   toggleTerminal(): void {
-    if (!this.id || this.termBtn.getAttribute('aria-disabled') === 'true') return;
+    if (!this.id) return;
+    if (this.termBtn.getAttribute('aria-disabled') === 'true') {
+      const why = this.termBtn.title;
+      setText(this.termWhy, why);
+      setHidden(this.termWhy, false);
+      this.ctx.announce(why);
+      if (this.termWhyTimer) clearTimeout(this.termWhyTimer);
+      this.termWhyTimer = setTimeout(() => setHidden(this.termWhy, true), 8_000);
+      return;
+    }
+    setHidden(this.termWhy, true);
     this.terminal.toggle(this.id, this.termBtn);
   }
 
@@ -629,6 +645,7 @@ class AgentView {
     const open = this.terminal.agentId === this.id;
     // aria-disabled (e não disabled): o botão continua focável e a dica do porquê aparece no hover.
     const enabled = open || (available && live);
+    if (enabled) setHidden(this.termWhy, true);
     setAttr(this.termBtn, 'aria-disabled', enabled ? null : 'true');
     this.termBtn.classList.toggle('is-disabled', !enabled);
     setAttr(this.termBtn, 'aria-pressed', String(open));
@@ -641,7 +658,9 @@ class AgentView {
         : !available
           ? this.ctx.store.replaying
             ? 'Sem terminal no timelapse: a conversa é a de agora, não a do momento reproduzido.'
-            : TERMINAL_UNAVAILABLE_HINT
+            : this.ctx.store.snapshot?.meta.terminal && access().remote
+              ? 'O terminal não está liberado no acesso remoto (HABBLAUD_REMOTE_ALLOW).'
+              : TERMINAL_UNAVAILABLE_HINT
           : !live
             ? 'O agente já saiu do escritório.'
             : `Ver a conversa desta sessão como no ${provider === 'codex' ? 'Codex' : 'terminal do Claude Code'}, ao vivo (T)`,

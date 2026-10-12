@@ -1,8 +1,20 @@
-// O que esta página pode fazer, segundo o servidor (GET /api/access, ver AccessInfo). Lido uma vez antes de conectar.
+// O que esta página pode fazer, segundo o servidor (GET /api/access, ver AccessInfo). Lido antes de conectar e de novo a
+// cada reconexão (main.ts): HABBLAUD_REMOTE_ALLOW pode mudar com o servidor reiniciado e a página do celular continua aberta.
 // Sem resposta (servidor antigo, rede), cai na regra de antes: só a página aberta pelo próprio computador age.
 import type { AccessInfo } from '../../../shared/types';
 
 let current: AccessInfo | null = null;
+const listeners = new Set<() => void>();
+
+/** Avisa quando o acesso muda (a UI redesenha os botões). Devolve a função que cancela. */
+export function onAccessChange(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => void listeners.delete(cb);
+}
+
+function sameAccess(a: AccessInfo | null, b: AccessInfo | null): boolean {
+  return !!a && !!b && (Object.keys(a) as (keyof AccessInfo)[]).every((k) => a[k] === b[k]) && Object.keys(a).length === Object.keys(b).length;
+}
 
 /** Hostname do próprio computador (localhost, *.localhost, 127.x, ::1). */
 export function isLoopbackHostname(hostname: string): boolean {
@@ -30,7 +42,12 @@ export async function loadAccess(fetchImpl: typeof fetch = fetch): Promise<Acces
     const res = await fetchImpl('/api/access', { credentials: 'same-origin', cache: 'no-store' });
     if (res.ok) {
       const body: unknown = await res.json();
-      if (isAccessInfo(body)) current = { ...body, spawn: (body as { spawn?: unknown }).spawn === true };
+      if (isAccessInfo(body)) {
+        const next = { ...body, spawn: (body as { spawn?: unknown }).spawn === true };
+        const changed = !sameAccess(current, next);
+        current = next;
+        if (changed) listeners.forEach((cb) => cb());
+      }
     }
   } catch {
     // fica a regra antiga (fallbackAccess)

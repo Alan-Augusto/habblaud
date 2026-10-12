@@ -14,7 +14,16 @@ const world = createWorld(document.getElementById('world') as HTMLCanvasElement,
 createUI(document.getElementById('ui') as HTMLElement, store, world);
 // O que esta página pode fazer (porta local ou remota com login) chega antes do primeiro snapshot.
 if (store.mock) store.connect();
-else void loadAccess().finally(() => store.connect());
+else {
+  void loadAccess().finally(() => store.connect());
+  // Reconexão (servidor reiniciado, celular de volta do bloqueio): o acesso pode ter mudado.
+  let opened = false;
+  store.on('connection', (state) => {
+    if (state !== 'open') return;
+    if (opened) void loadAccess();
+    opened = true;
+  });
+}
 
 // Facilita a depuração pelo console do navegador.
 Object.assign(window, { habblaud: { store, world } });
