@@ -2,6 +2,7 @@
 // Recebe o OfficeStore (dados) e o WorldApi (canvas) e monta: barra superior com uso por conta,
 // barra lateral, gaveta de detalhes, feed, avisos, configurações, ajuda e estados de carregamento/vazio.
 // DOM incremental: os snapshots (até ~5/s) só marcam a UI como "suja"; tudo é reconciliado uma vez por quadro.
+import { access } from '../net/access';
 import '@fontsource/pixelify-sans/400.css';
 import '@fontsource/pixelify-sans/500.css';
 import '@fontsource/pixelify-sans/600.css';
@@ -340,7 +341,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
     const id = selection?.type === 'agent' ? selection.id : null;
     if (terminal.isOpen && (id === null || terminal.agentId === id)) terminal.close();
     else if (id === null) ctx.announce('Selecione um agente para abrir o terminal.');
-    else if (!store.snapshot?.meta.terminal) ctx.announce(`${TERMINAL_UNAVAILABLE_HINT}.`);
+    else if (!store.snapshot?.meta.terminal || !access().terminal) ctx.announce(`${TERMINAL_UNAVAILABLE_HINT}.`);
     else if (!ctx.agent(id)) ctx.announce('O agente já saiu do escritório.');
     else terminal.open(id);
   }

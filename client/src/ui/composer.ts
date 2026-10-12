@@ -24,7 +24,7 @@ import {
 } from './composer-model';
 import type { UiContext } from './context';
 import { h, setAttr, setHidden, setText, setTitle } from './dom';
-import { isLocalHostname } from './permission';
+import { access } from '../net/access';
 
 export type ComposerVariant = 'drawer' | 'terminal';
 
@@ -108,7 +108,7 @@ export class MessageComposer {
     const store = this.ctx.store;
     const mode = composerMode(agent, {
       enabled: store.mock || !!store.snapshot?.meta.messages,
-      local: store.mock || isLocalHostname(location.hostname),
+      local: store.mock || access().messages,
       replaying: store.replaying,
     });
     this.mode = mode;

@@ -10,6 +10,24 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Adicionado
+
+- **Celular com login e HTTPS, aprovando pedidos:** `npm run remote:setup` pergunta usuário, senha (guardada só como
+  hash scrypt no `.env`), um nome para o endereço (`https://<nome>.local`) e, se quiser, um endereço próprio (ex.:
+  `meuclaude.home`). Ele cria uma CA local e o certificado do servidor, e deixa o anúncio do `<nome>.local` rodando
+  como serviço. O celular entra numa **segunda porta** (443 se estiver livre, senão 4748): toda requisição nela exige
+  login, e por padrão o celular **aprova e recusa pedidos de permissão**; mensagens e terminal só com
+  `HABBLAUD_REMOTE_ALLOW`. A porta 4747 continua só no computador e sem login (hooks, plugins e o seu navegador).
+- `GET /api/access`: o que a página aberta pode fazer. A página passa a perguntar ao servidor em vez de deduzir pelo
+  endereço, o que permite responder pedidos pela porta remota.
+
+### Segurança
+
+- Quem separa "do próprio computador" de "da rede" na porta remota é a porta em que a conexão chegou, nunca o
+  cabeçalho Host. Sessão em cookie HttpOnly, SameSite=Strict e Secure, assinado com HMAC (trocar a senha derruba todas);
+  depois de 5 senhas erradas seguidas, cada tentativa espera (de 1 s a 5 min). HTTP puro na porta remota só com
+  `HABBLAUD_REMOTE_INSECURE_HTTP=1`. A chave da CA nunca vai para o container.
+
 ## [0.8.0] - 2026-10-09
 
 Para atualizar: `git pull` e `npm run docker:up`. Renomear salas e editar o personagem funcionam só pelo próprio

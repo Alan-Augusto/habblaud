@@ -9,7 +9,7 @@ import { canEditCharacter, changedParts, EDITOR_GROUPS, rowVisible, styleLabel, 
 import type { UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText } from './dom';
 import { ICONS } from './icons';
-import { isLocalHostname } from './permission';
+import { access } from '../net/access';
 
 /** Pixels de tela por pixel do personagem na prévia. */
 const PREVIEW_SCALE = 4;
@@ -80,7 +80,7 @@ export class CharacterEditor {
     const allowed = canEditCharacter(a, {
       live,
       terminal: !!store.snapshot?.meta.terminal,
-      local: isLocalHostname(location.hostname),
+      local: access().local,
       replaying: store.replaying,
       mock: store.mock,
     });

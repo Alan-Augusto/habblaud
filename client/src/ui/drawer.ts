@@ -38,7 +38,8 @@ import {
   taskProgress,
   visibleShells,
 } from './model';
-import { isLocalHostname, PermissionCard } from './permission';
+import { access } from '../net/access';
+import { PermissionCard } from './permission';
 import { canRenameRoom } from './roomrename';
 import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, providerOf } from './provider';
 import { createAgentRow, updateAgentRow } from './rows';
@@ -517,7 +518,7 @@ class AgentView {
     // Sem o pedido no escritório: dá para responder por aqui com o plugin (só com a trava local, como o cartão). O Codex
     // não responde perguntas pelo escritório.
     const answerable =
-      !codex && !!asking?.questions?.length && !this.perm.visible && !this.ctx.store.mock && !!this.ctx.store.snapshot?.meta.terminal && isLocalHostname(location.hostname);
+      !codex && !!asking?.questions?.length && !this.perm.visible && !this.ctx.store.mock && !!this.ctx.store.snapshot?.meta.terminal && access().permissions;
     setHidden(this.alertAnswerHint, !answerable);
 
     // Esperando o shell.
@@ -624,7 +625,7 @@ class AgentView {
   }
 
   private renderTerminalButton(live: boolean, provider = providerOf(this.last)): void {
-    const available = !!this.ctx.store.snapshot?.meta.terminal;
+    const available = !!this.ctx.store.snapshot?.meta.terminal && access().terminal;
     const open = this.terminal.agentId === this.id;
     // aria-disabled (e não disabled): o botão continua focável e a dica do porquê aparece no hover.
     const enabled = open || (available && live);

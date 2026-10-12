@@ -8,7 +8,8 @@ import { codexDirsRefused } from './accounts/detect';
 import { AccountsService } from './accounts/service';
 import { loadConfig, messagesOffReason, terminalOffReason } from './config';
 import { createApiHandler, sendJson } from './http/app';
-import { createRequestGuard } from './http/guard';
+import { createRequestGuard, isLoopbackHost } from './http/guard';
+import { createRemoteGate, isRemoteRequest, loadSecret, RemoteSessions, startRemoteListener, type RemoteListener } from './http/remote';
 import { Hub } from './http/sse';
 import { createStaticHandler } from './http/static';
 import { TerminalStreams } from './http/terminal';
@@ -101,7 +102,10 @@ if (codex) agents.add(codex);
 const codexLive: CodexLive | undefined = codex;
 late.office = office;
 late.agents = agents;
-const hub = new Hub(office);
+// Página que pode responder pelo escritório: Host local na porta local; na remota, só com permissions liberado.
+const hub = new Hub(office, {
+  canAnswer: (req) => (isRemoteRequest(req) ? !!config.remote?.allow.has('permissions') : isLoopbackHost(req.headers.host)),
+});
 // "Meu dia": amostra o escritório a cada segundo e persiste em <dataDir>/stats/ (ver history/daystats.ts).
 const stats = new DayStatsService({ dir: join(config.dataDir, 'stats'), snapshot: () => hub.current() });
 stats.load();
@@ -195,6 +199,7 @@ const api = createApiHandler({
   codexLive,
   stats,
   updates,
+  remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,
 });
 
 const server = http.createServer();
@@ -245,6 +250,45 @@ server.on('error', (err: NodeJS.ErrnoException) => {
   else log.error(`Erro no servidor HTTP: ${errMsg(err)}`);
   process.exit(1);
 });
+
+/**
+ * Porta remota (celular na rede local): o mesmo app, mas toda requisição passa pelo login (http/remote.ts) antes da
+ * API. A porta principal segue só local; quem separa as duas é a porta em que a conexão chegou.
+ */
+let remoteListener: RemoteListener | undefined;
+if (config.remote) {
+  const remote = config.remote;
+  const gate = createRemoteGate({
+    config: remote,
+    sessions: new RemoteSessions(loadSecret(join(config.dataDir, 'remote-secret')), remote),
+    secure: !!remote.tls,
+    caFile: remote.tls?.caFile,
+  });
+  remoteListener = startRemoteListener(
+    remote,
+    (req, res) => {
+      const url = parseUrl(req);
+      try {
+        if (guard(req, res)) return;
+        if (gate(req, res, url)) return;
+        if (!api(req, res, url)) fallback(req, res, url);
+      } catch (err) {
+        log.warn(`Erro ao responder (remoto) ${req.method} ${url.pathname}: ${errMsg(err)}`);
+        if (!res.headersSent) sendJson(res, 500, { error: 'erro interno' });
+        else res.destroy();
+      }
+    },
+    log,
+    config.allowedHosts,
+  );
+  remoteListener.server.once('listening', () => {
+    const allow = [...remote.allow].join(', ') || 'só ver';
+    const where = config.inDocker ? 'publicada pelo HABBLAUD_REMOTE_BIND' : remote.host;
+    log.info(`   Acesso remoto: ligado na porta ${remote.port} (${where}), ${remote.tls ? 'HTTPS' : 'HTTP SEM criptografia (HABBLAUD_REMOTE_INSECURE_HTTP)'}, com login; libera: ${allow}.`);
+  });
+} else if (config.remoteWarning) {
+  log.warn(`   ${config.remoteWarning}.`);
+}
 
 server.listen(config.port, config.host, () => {
   const host = config.host === '0.0.0.0' || config.host === '::' ? 'localhost' : config.host;
@@ -312,6 +356,7 @@ function shutdown(signal: string): void {
   updates.stop();
   names.flush();
   void closeVite?.();
+  remoteListener?.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1_500).unref();
 }

@@ -239,6 +239,38 @@ Depois abra `http://<ip-do-computador>:4747` no celular (no macOS: `ipconfig get
 > só em redes de confiança. O [terminal](#terminal) (e com ele responder e mandar mensagens pelo escritório) fica
 > desligado enquanto a porta estiver exposta. Para voltar: apague o `.env` e rode `npm run docker:up -- --no-build`.
 
+#### Celular com login e HTTPS (e aprovando pedidos)
+
+Em vez de expor a porta principal, abra uma **segunda porta com usuário, senha e HTTPS**. A 4747 continua só no
+computador (hooks, plugins e o seu navegador seguem sem login); a porta remota vai para a rede e toda requisição nela
+exige login. Quem separa as duas é a porta em que a conexão chegou, não o cabeçalho Host.
+
+```bash
+npm run remote:setup   # usuário, senha, nome do endereço e (opcional) um endereço próprio
+npm run docker:up
+```
+
+O `remote:setup` grava no `.env` só o **hash** da senha (scrypt), cria uma CA local e o certificado do servidor em
+`~/.habblaud/remote-tls` e deixa um serviço anunciando `<nome>.local` na rede (mDNS; LaunchAgent no macOS, systemd no
+Linux). Abra `https://<nome>.local` no celular (com `:4748` se a porta 443 estava ocupada). Na primeira vez, aceite o
+aviso, toque em **Instale o certificado do Habblaud** e confie nele (iPhone: Ajustes › Perfil Baixado › Instalar e
+depois Ajustes › Geral › Sobre › Ajustes de Confiança de Certificados; Android: Segurança › Criptografia e
+credenciais › Instalar certificado › Certificado de CA), conferindo a impressão digital que o setup mostrou.
+
+- **Endereço próprio** (ex.: `meuclaude.home`): entra no certificado, mas o celular só o encontra com uma entrada no
+  DNS do roteador apontando para o IP do computador. O `<nome>.local` funciona sem configurar nada.
+- **O que o celular pode fazer:** por padrão, aprovar e recusar pedidos de permissão. `HABBLAUD_REMOTE_ALLOW` no
+  `.env` aceita `permissions`, `messages` e `terminal` (separados por vírgula) ou `none` (só ver).
+- **Sessão:** 30 dias; trocar a senha (rodar o setup de novo) derruba todas. Depois de 5 senhas erradas seguidas, cada
+  nova tentativa espera de 1 s até 5 min.
+- **IP mudou?** O `docker:up` refaz o certificado do servidor quando falta o IP novo ou quando faltam 30 dias para
+  vencer, com a mesma CA (o celular segue confiando); o servidor troca o certificado sem reiniciar.
+- **Desligar:** `npm run remote:setup -- --off` e `npm run docker:up`.
+
+Sem HTTPS a porta remota não sobe; `HABBLAUD_REMOTE_INSECURE_HTTP=1` força HTTP puro (senha e cookie à vista na
+rede). No modo Node: `HABBLAUD_REMOTE_PORT` e `HABBLAUD_REMOTE_HOST` (padrão `0.0.0.0:4748`) e
+`HABBLAUD_REMOTE_TLS_DIR` (padrão `~/.habblaud/remote-tls/server`).
+
 ### Atualizar
 
 A versão em uso aparece na barra superior, ao lado de "Conectado", e em **Configurações › Sobre**. A cada 6 horas o

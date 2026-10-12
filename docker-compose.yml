@@ -21,6 +21,9 @@ services:
     # (HABBLAUD_BIND=0.0.0.0 no .env libera a rede local; veja o README).
     ports:
       - "${HABBLAUD_BIND:-127.0.0.1}:${HABBLAUD_PORT:-4747}:4747"
+      # Acesso remoto com login (celular): o container só escuta nela com HABBLAUD_REMOTE_USER e
+      # HABBLAUD_REMOTE_PASSWORD no .env; HABBLAUD_REMOTE_BIND=0.0.0.0 a abre para a rede local.
+      - "${HABBLAUD_REMOTE_BIND:-127.0.0.1}:${HABBLAUD_REMOTE_PORT:-4748}:4748"
     volumes:
       - habblaud-data:/data
     # Opções que podem vir do .env (ou do ambiente) para dentro do container.
@@ -36,6 +39,11 @@ services:
       HABBLAUD_UPDATE_CHECK: ${HABBLAUD_UPDATE_CHECK:-}
       # 0 desliga as sessões do Codex no escritório.
       HABBLAUD_CODEX: ${HABBLAUD_CODEX:-}
+      # Acesso remoto com login (server/http/remote.ts).
+      HABBLAUD_REMOTE_USER: ${HABBLAUD_REMOTE_USER:-}
+      HABBLAUD_REMOTE_PASSWORD_HASH: ${HABBLAUD_REMOTE_PASSWORD_HASH:-}
+      HABBLAUD_REMOTE_ALLOW: ${HABBLAUD_REMOTE_ALLOW:-}
+      HABBLAUD_REMOTE_INSECURE_HTTP: ${HABBLAUD_REMOTE_INSECURE_HTTP:-}
     # Endurecimento: sistema de arquivos só leitura (exceto /data e /tmp), sem capabilities extras.
     read_only: true
     tmpfs:

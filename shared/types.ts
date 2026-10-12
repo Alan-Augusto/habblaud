@@ -360,6 +360,19 @@ export interface OfficeSnapshot {
   };
 }
 
+/**
+ * O que ESTA página pode fazer (GET /api/access): a porta local libera tudo pelo Host local; a porta remota com login
+ * (server/http/remote.ts) só o que HABBLAUD_REMOTE_ALLOW liberar. `local` = aberta pelo próprio computador (editar
+ * personagem e renomear salas, que nunca valem pela porta remota).
+ */
+export interface AccessInfo {
+  remote: boolean;
+  local: boolean;
+  permissions: boolean;
+  messages: boolean;
+  terminal: boolean;
+}
+
 export interface FeedItem {
   id: string;
   agentId: string;

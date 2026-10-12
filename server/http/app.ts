@@ -1,7 +1,7 @@
 // Rotas da API (/api/*). Respostas JSON; rotas desconhecidas -> 404 JSON.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { NAME_MAX, parseAppearanceParts, parseCharacterName, parseSeed } from '../../shared/appearance';
-import type { AgentInfo, ModSummary, OfficeSnapshot, SourceInfo, UpdateStatus } from '../../shared/types';
+import type { AccessInfo, AgentInfo, ModSummary, OfficeSnapshot, SourceInfo, UpdateStatus } from '../../shared/types';
 import type { AccountsService } from '../accounts/service';
 import { handleCodexEvent } from '../codex/http';
 import type { DayStatsService } from '../history/daystats';
@@ -9,6 +9,7 @@ import type { Office } from '../model/office';
 import type { CodexLive } from '../sources/codex/live';
 import type { SessionLookup } from '../sources/source';
 import { isJsonContentType, isLoopbackHost } from './guard';
+import type { RemoteFeature } from './remote';
 import { handleSessionsRoute } from './sessions';
 import type { Hub } from './sse';
 import { handleStatsRoute } from './stats';
@@ -58,7 +59,14 @@ export interface ApiDeps {
     status(): UpdateStatus;
     check(opts: { manual?: boolean }): Promise<UpdateStatus>;
   };
+  /**
+   * Porta remota com login (http/remote.ts): `is` diz se a requisição chegou por ela (já autenticada); `allows`, o que
+   * HABBLAUD_REMOTE_ALLOW libera. Requisição remota nunca vale pelo Host: só pelo que `allows` liberar.
+   */
+  remote?: { is(req: IncomingMessage): boolean; allows(feature: RemoteFeature): boolean };
 }
+
+const REMOTE_DENIED = 'não liberado no acesso remoto (veja HABBLAUD_REMOTE_ALLOW)';
 
 /** GET /api/agents/:id/terminal (ids nunca contêm '/'). */
 const TERMINAL_ROUTE = /^\/api\/agents\/([^/]+)\/terminal$/;
@@ -192,6 +200,15 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
   const { office, hub, accounts } = deps;
   const terminals = deps.terminal ? deps.terminals : undefined;
 
+  const isRemote = (req: IncomingMessage): boolean => !!deps.remote?.is(req);
+  /**
+   * A trava "pelo próprio computador": na porta local, o Host precisa ser loopback (como antes); na porta remota, só o
+   * que HABBLAUD_REMOTE_ALLOW liberar (`feature` ausente = nunca pela porta remota).
+   */
+  const trusted = (req: IncomingMessage, feature?: RemoteFeature): boolean =>
+    isRemote(req) ? !!feature && !!deps.remote?.allows(feature) : isLoopbackHost(req.headers.host);
+  const denied = (req: IncomingMessage, localMessage: string): string => (isRemote(req) ? REMOTE_DENIED : localMessage);
+
   const methodNotAllowed = (res: ServerResponse, allow: string) => {
     res.setHeader('Allow', allow);
     sendJson(res, 405, { error: 'método não permitido' });
@@ -248,14 +265,16 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
     if (path === '/api/health') {
       if (!isRead) methodNotAllowed(res, 'GET');
       else {
+        const remote = isRemote(req);
         sendJson(res, 200, {
           ok: true,
           version: deps.version,
           demo: office.isDemo(),
           docker: deps.inDocker,
-          terminal: !!terminals,
-          permissions: !!deps.permissions,
-          messages: !!deps.messages,
+          remote,
+          terminal: !!terminals && (!remote || trusted(req, 'terminal')),
+          permissions: !!deps.permissions && (!remote || trusted(req, 'permissions')),
+          messages: !!deps.messages && (!remote || trusted(req, 'messages')),
           codexEvents: !!deps.codexLive,
           updates: updatesSummary(deps.updates?.status()),
           sources: deps.sources(),
@@ -265,6 +284,21 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
               : { id: a.id, provider: a.provider, usageStatus: accounts.usageView(a.id).status },
           ),
         });
+      }
+      return true;
+    }
+    if (path === '/api/access') {
+      if (!isRead) methodNotAllowed(res, 'GET');
+      else {
+        const remote = isRemote(req);
+        const access: AccessInfo = {
+          remote,
+          local: !remote && isLoopbackHost(req.headers.host),
+          permissions: !!deps.permissions && trusted(req, 'permissions'),
+          messages: !!deps.messages && trusted(req, 'messages'),
+          terminal: !!terminals && trusted(req, 'terminal'),
+        };
+        sendJson(res, 200, access);
       }
       return true;
     }
@@ -282,8 +316,8 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       if (method !== 'GET') methodNotAllowed(res, 'GET');
       else if (!terminals) {
         sendJson(res, 403, { error: 'terminal desligado: ele só funciona com o Habblaud acessível apenas pelo próprio computador' });
-      } else if (!isLoopbackHost(req.headers.host)) {
-        sendJson(res, 403, { error: 'o terminal só abre pelo próprio computador (http://localhost ou http://127.0.0.1)' });
+      } else if (!trusted(req, 'terminal')) {
+        sendJson(res, 403, { error: denied(req, 'o terminal só abre pelo próprio computador (http://localhost ou http://127.0.0.1)') });
       } else {
         let id: string;
         try {
@@ -297,15 +331,19 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       return true;
     }
     if (path.startsWith('/api/sessions/')) {
-      handleSessionsRoute(req, res, path, { history: deps.terminal ? deps.sessions : undefined, terminals });
+      handleSessionsRoute(req, res, path, {
+        history: deps.terminal ? deps.sessions : undefined,
+        terminals,
+        trusted: isRemote(req) ? trusted(req, 'terminal') : undefined,
+      });
       return true;
     }
     if (path === '/api/permissions' || path.startsWith('/api/permissions/')) {
       // Responder pelo escritório age sobre as sessões: a mesma trava do terminal (bind local + Host local).
       if (!deps.permissions) {
         sendJson(res, 403, { error: 'responder pelo escritório desligado: só funciona com o Habblaud acessível apenas pelo próprio computador' });
-      } else if (!isLoopbackHost(req.headers.host)) {
-        sendJson(res, 403, { error: 'pedidos de permissão só são respondidos pelo próprio computador (http://localhost ou http://127.0.0.1)' });
+      } else if (!trusted(req, 'permissions')) {
+        sendJson(res, 403, { error: denied(req, 'pedidos de permissão só são respondidos pelo próprio computador (http://localhost ou http://127.0.0.1)') });
       } else {
         deps.permissions(req, res, path);
       }
@@ -317,8 +355,8 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       if (method !== 'PUT' && method !== 'DELETE') methodNotAllowed(res, 'PUT, DELETE');
       else if (!deps.terminal) {
         sendJson(res, 403, { error: 'editar o personagem desligado: só funciona com o Habblaud acessível apenas pelo próprio computador' });
-      } else if (!isLoopbackHost(req.headers.host)) {
-        sendJson(res, 403, { error: 'o personagem só é editado pelo próprio computador (http://localhost ou http://127.0.0.1)' });
+      } else if (!trusted(req)) {
+        sendJson(res, 403, { error: denied(req, 'o personagem só é editado pelo próprio computador (http://localhost ou http://127.0.0.1)') });
       } else {
         let id: string;
         try {
@@ -336,8 +374,8 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       // sempre conecta pelo loopback (o Host sozinho um cliente da rede consegue imitar); no Docker ele chega pela porta
       // publicada, com o endereço do gateway.
       if (method !== 'POST') methodNotAllowed(res, 'POST');
-      else if (!isLoopbackHost(req.headers.host) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
-        sendJson(res, 403, { error: 'eventos do Codex só são aceitos pelo próprio computador (http://localhost ou http://127.0.0.1)' });
+      else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, 'eventos do Codex só são aceitos pelo próprio computador (http://localhost ou http://127.0.0.1)') });
       } else handleCodexEvent(req, res, { live: deps.codexLive, entries: () => accounts.entriesOf('codex') }).catch((err) => fail(res, err));
       return true;
     }
@@ -347,8 +385,8 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         sendJson(res, 403, {
           error: 'mensagens pelo escritório desligadas: só funcionam com o Habblaud acessível apenas pelo próprio computador (e sem HABBLAUD_MENSAGENS=0)',
         });
-      } else if (!isLoopbackHost(req.headers.host)) {
-        sendJson(res, 403, { error: 'mensagens só são mandadas pelo próprio computador (http://localhost ou http://127.0.0.1)' });
+      } else if (!trusted(req, 'messages')) {
+        sendJson(res, 403, { error: denied(req, 'mensagens só são mandadas pelo próprio computador (http://localhost ou http://127.0.0.1)') });
       } else {
         deps.messages(req, res, path);
       }
@@ -375,7 +413,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       // Como o personagem: a mesma trava do terminal (bind local + Host local).
       if (method !== 'POST') methodNotAllowed(res, 'POST');
       else if (!deps.terminal) sendJson(res, 403, { error: 'renomear salas desligado: só funciona com o Habblaud acessível apenas pelo próprio computador' });
-      else if (!isLoopbackHost(req.headers.host)) sendJson(res, 403, { error: 'renomear salas só pelo próprio computador (http://localhost)' });
+      else if (!trusted(req)) sendJson(res, 403, { error: denied(req, 'renomear salas só pelo próprio computador (http://localhost)') });
       else
         readJson(req)
           .then((body) => {
