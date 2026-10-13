@@ -44,6 +44,9 @@ do meio (0.**3**.0).
 - O feed pausado guarda só os 50 eventos mais recentes e libera os dados de sessões antigas, mantendo a contagem de novidades.
 - No timelapse, as setas no controle de velocidade passam a trocar a velocidade, em vez de mover a câmera do escritório.
 - O escritório evita conexões ao vivo duplicadas e libera os recursos de rede e fontes ao ser fechado.
+- `usage:install`, `hooks:install`, `mod:install` e `codex:install` param quando o arquivo de configuração muda
+  no meio da instalação, em vez de apagar essa edição (ela também sumia do backup). Rode o comando de novo; o
+  backup passa a ser o arquivo que foi substituído.
 
 ## [0.8.0] - 2026-10-09
 
