@@ -32,6 +32,7 @@ do meio (0.**3**.0).
 - As tarefas antigas e seus estados são preservados ao recuperar sessões com histórico longo que ganharam novas tarefas.
 - O detalhe da atividade não mostra mais o segredo de webhooks (Slack, Discord e Telegram) nem de tokens `npm_` e `hf_` colados num comando.
 - Mensagens ao Codex no Docker agora são entregues uma por vez por sessão e confirmadas individualmente, reduzindo falhas prematuras e reenvios duplicados.
+- Listas de tarefas malformadas do Claude Code não interrompem a leitura; o escritório preserva as demais atividades do mesmo lote, inclusive nos subagentes.
 
 ## [0.8.0] - 2026-10-09
 
