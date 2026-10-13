@@ -76,6 +76,8 @@ export class TimelapsePlayer implements UiComponent {
   readonly vignette: HTMLElement;
 
   private open = false;
+  /** Último valor gravado em --lapse-h (-1 = ainda nenhum). */
+  private lapseH = -1;
   private status: Status = 'idle';
   private message = '';
   private days: TimelineDayInfo[] = [];
@@ -216,9 +218,15 @@ export class TimelapsePlayer implements UiComponent {
     }
   }
 
-  /** Altura da barra para os avisos (.ui-toasts) ficarem acima dela durante o replay; 0 com a barra fechada. */
+  /**
+   * Altura da barra para os avisos (.ui-toasts) ficarem acima dela durante o replay; 0 com a barra fechada. Chamada pelo
+   * ResizeObserver (abrir e fechar também mudam o tamanho), não a cada render: no replay o render roda a todo quadro, e
+   * medir forçaria o layout da página. A variável só é regravada quando muda.
+   */
   private syncHeight(): void {
     const h = this.open ? Math.round(this.el.getBoundingClientRect().height) : 0;
+    if (h === this.lapseH) return;
+    this.lapseH = h;
     this.ctx.root.style.setProperty('--lapse-h', `${h}px`);
   }
 
@@ -293,7 +301,6 @@ export class TimelapsePlayer implements UiComponent {
 
   render(): void {
     setHidden(this.el, !this.open);
-    this.syncHeight();
     const on = this.active;
     setHidden(this.badge, !on);
     setHidden(this.vignette, !on);
