@@ -2,6 +2,7 @@
 // guarda a linha parcial para o próximo ciclo (até MAX_LINE_BYTES) e detecta truncamento/rotação.
 import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs';
 import { log } from '../log';
+import { tr } from '../../shared/i18n';
 
 export interface TailRead {
   lines: string[];
@@ -26,7 +27,7 @@ export const MAX_LINE_BYTES = 8 * 1024 * 1024;
 /** Avisa uma vez por arquivo que uma linha passou do teto e foi ignorada. Sem o conteúdo da linha. */
 export function warnOversizedLine(path: string): void {
   const mb = MAX_LINE_BYTES / (1024 * 1024);
-  log.warnOnce(`oversize-line:${path}`, `Linha com mais de ${mb} MiB em ${path} foi ignorada até a próxima quebra.`);
+  log.warnOnce(`oversize-line:${path}`, tr('Linha com mais de {0} MiB em {1} foi ignorada até a próxima quebra.', [mb, path]));
 }
 
 /**

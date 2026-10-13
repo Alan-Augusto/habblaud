@@ -398,9 +398,9 @@ export class Sidebar implements UiComponent {
       const live = router.interactive(a.id);
       r.term.classList.toggle('is-on', open);
       r.term.classList.toggle('is-live', live);
-      const what = live ? 'interativo' : 'ao vivo';
-      setTitle(r.term, open ? 'Fechar o terminal' : `Abrir o terminal de ${a.name} (${what})`);
-      setAttr(r.term, 'aria-label', open ? `Fechar o terminal de ${a.name}` : `Abrir o terminal de ${a.name}`);
+      const what = live ? tr('interativo') : tr('ao vivo');
+      setTitle(r.term, open ? tr('Fechar o terminal') : tr('Abrir o terminal de {0} ({1})', [a.name, what]));
+      setAttr(r.term, 'aria-label', open ? tr('Fechar o terminal de {0}', [a.name]) : tr('Abrir o terminal de {0}', [a.name]));
     }
     const has = n.subTotal > 0;
     setHidden(r.subsWrap, !has);

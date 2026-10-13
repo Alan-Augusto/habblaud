@@ -274,7 +274,6 @@ export const FR: Readonly<Record<string, string>> = {
   "Fechar o terminal (T)": "Fermer le terminal (T)",
   "Sem terminal no timelapse: a conversa é a de agora, não a do momento reproduzido.": "Pas de terminal pendant le timelapse : la conversation est celle de maintenant, pas celle du moment rejoué.",
   "O agente já saiu do escritório.": "L'agent a déjà quitté le bureau.",
-  "Ver a conversa desta sessão como no {0}, ao vivo (T)": "Voir la conversation de cette session comme dans {0}, en direct (T)",
   "terminal do Claude Code": "le terminal de Claude Code",
   "Aprovações": "Validations",
   "Em segundo plano": "En arrière-plan",
@@ -605,7 +604,6 @@ export const FR: Readonly<Record<string, string>> = {
   "Sempre noite": "Toujours nuit",
   "Automático: céu, luzes e sol nas janelas seguem a hora local.": "Automatique : le ciel, les lumières et le soleil aux fenêtres suivent l'heure locale.",
   "Idioma da interface": "Langue de l'interface",
-  "Os textos de atividade seguem o idioma do computador onde o Habblaud roda (ou HABBLAUD_LANG).": "Les textes d'activité suivent la langue de l'ordinateur où tourne Habblaud (ou HABBLAUD_LANG).",
   "Dados": "Données",
   "Modo demonstração": "Mode démonstration",
   "Coloca agentes fictícios no escritório, junto com os reais.": "Ajoute des agents fictifs dans le bureau, à côté des vrais.",
@@ -2132,4 +2130,142 @@ export const FR: Readonly<Record<string, string>> = {
 
   // shared/messages.ts
   "Mensagem pelo Habblaud": "Message via Habblaud",
+
+  // client/src/ui/drawer.ts
+  "interativo": "interactif",
+  "ao vivo": "en direct",
+  "em outro terminal": "dans un autre terminal",
+  "Ver a conversa desta sessão como no {0}, ao vivo{1} (T)": "Voir la conversation de cette session comme dans {0}, en direct{1} (T)",
+  "; \"Assumir daqui\" continua nela aqui": "; « Prendre le contrôle ici » la poursuit ici",
+  "Abrir o terminal desta sessão, que roda aqui no Habblaud (T)": "Ouvrir le terminal de cette session, qui tourne ici dans Habblaud (T)",
+  "Abrir o terminal: a sessão roda em outro terminal; dá para assumir daqui (T)": "Ouvrir le terminal : la session tourne dans un autre terminal ; vous pouvez en prendre le contrôle ici (T)",
+
+  // client/src/ui/pty.ts
+  "Fechar a janela (a sessão continua rodando)": "Fermer la fenêtre (la session continue de tourner)",
+  "terminal": "terminal",
+  "Esta sessão está aberta em outro terminal": "Cette session est ouverte dans un autre terminal",
+  "Use \"Assumir daqui\" (no topo) para encerrar lá e continuar a mesma conversa nesta janela, podendo digitar.": "Utilisez « Prendre le contrôle ici » (en haut) pour la fermer là-bas et poursuivre la même conversation dans cette fenêtre, en pouvant taper.",
+  "Sem terminal no timelapse": "Pas de terminal dans le timelapse",
+  "Terminal interativo desligado": "Terminal interactif désactivé",
+  "Sessão encerrada.": "Session terminée.",
+  "encerrado": "terminé",
+  "retomando…": "reprise…",
+  "iniciando…": "démarrage…",
+  "saiu do escritório": "a quitté le bureau",
+
+  // client/src/ui/ptypane.ts
+  "Claude Code encerrado (código {0})": "Claude Code terminé (code {0})",
+  "Claude Code encerrado": "Claude Code terminé",
+
+  // client/src/ui/settings.ts
+  "Tema do escritório": "Thème du bureau",
+  "Natal": "Noël",
+  "Halloween": "Halloween",
+  "Automático: Halloween em outubro e Natal de 1º de novembro a 26 de dezembro; no resto do ano, o visual original. Nenhum: sempre o original.": "Automatique : Halloween en octobre et Noël du 1er novembre au 26 décembre ; le reste de l'année, l'apparence d'origine. Aucun : toujours l'original.",
+  "Os textos das atividades vêm do servidor: seguem HABBLAUD_LANG ou o idioma do sistema onde o Habblaud roda (o inglês, só com HABBLAUD_LANG=en).": "Les textes d'activité viennent du serveur : ils suivent HABBLAUD_LANG ou la langue du système où tourne Habblaud (l'anglais, seulement avec HABBLAUD_LANG=en).",
+  "Aparência": "Apparence",
+
+  // client/src/ui/sidebar.ts
+  "Fechar o terminal": "Fermer le terminal",
+  "Abrir o terminal de {0} ({1})": "Ouvrir le terminal de {0} ({1})",
+  "Fechar o terminal de {0}": "Fermer le terminal de {0}",
+  "Abrir o terminal de {0}": "Ouvrir le terminal de {0}",
+
+  // client/src/ui/termactions.ts
+  "Encerra a sessão no terminal onde ela está e continua a mesma conversa aqui, podendo digitar": "Termine la session dans le terminal où elle tourne et poursuit la même conversation ici, en pouvant taper",
+  "Encerra esta sessão do Claude Code (a conversa fica salva)": "Termine cette session Claude Code (la conversation est conservée)",
+  "Confirmar?": "Confirmer ?",
+  "Assumir daqui": "Prendre le contrôle ici",
+  "Encerrar": "Fermer",
+  "Encerrando…": "Fermeture…",
+  "Assumindo…": "Prise de contrôle…",
+
+  // client/src/ui/termtabs.ts
+  "Agentes do projeto (arraste para reordenar)": "Agents du projet (glissez pour réorganiser)",
+  "Encerrar esta sessão": "Fermer cette session",
+  "encerrar?": "fermer ?",
+  "Clique de novo para encerrar a sessão (a conversa fica salva)": "Cliquez à nouveau pour fermer la session (la conversation reste enregistrée)",
+  " (interativo)": " (interactif)",
+  "{0}: sessão encerrada.": "{0} : session terminée.",
+  "Não deu para encerrar: {0}": "Impossible de fermer : {0}",
+
+  // client/src/world/social/social.ts
+  "futebol": "le foot",
+  "novela": "une série",
+  "desenho": "des dessins animés",
+
+  // server/http/app.ts
+  "terminal interativo desligado (veja o log do servidor)": "terminal interactif désactivé (voir le journal du serveur)",
+
+  // server/http/pty.ts
+  "o terminal interativo só pode ser usado no próprio computador": "le terminal interactif ne peut être utilisé que sur l'ordinateur lui-même",
+  "abra o Habblaud por http://localhost para usar o terminal interativo": "ouvrez Habblaud via http://localhost pour utiliser le terminal interactif",
+  "origem não permitida para o terminal interativo": "origine non autorisée pour le terminal interactif",
+
+  // server/index.ts
+  "desligado por HABBLAUD_PTY={0}": "désactivé par HABBLAUD_PTY={0}",
+  "desligado (ligue com HABBLAUD_PTY=1)": "désactivé (activez-le avec HABBLAUD_PTY=1)",
+  "indisponível no Docker (rode com npm start)": "indisponible dans Docker (lancez avec npm start)",
+  "mesma trava do terminal ({0})": "même verrou que le terminal ({0})",
+  "HABBLAUD_CLAUDE_BIN não encontrado no PATH ({0})": "HABBLAUD_CLAUDE_BIN introuvable dans le PATH ({0})",
+  "executável \"claude\" não encontrado no PATH (defina HABBLAUD_CLAUDE_BIN)": "exécutable \"claude\" introuvable dans le PATH (définissez HABBLAUD_CLAUDE_BIN)",
+  "o executável do Claude Code não roda: {0} (confira o HABBLAUD_CLAUDE_BIN)": "l'exécutable de Claude Code ne se lance pas : {0} (vérifiez HABBLAUD_CLAUDE_BIN)",
+  "Terminal interativo sem a tela completa ({0}): ao reconectar, modos como a colagem entre colchetes podem se perder.": "Terminal interactif sans l'écran complet ({0}) : à la reconnexion, des modes comme le collage entre crochets peuvent être perdus.",
+  "   Terminal interativo: ligado ({0}).": "   Terminal interactif : activé ({0}).",
+  "   Terminal interativo: {0}.": "   Terminal interactif : {0}.",
+
+  // server/messages/registry.ts
+  "a conversa do agente mudou (/clear ou /resume) antes da entrega": "la conversation de l'agent a changé (/clear ou /resume) avant la remise",
+
+  // server/pty/manager.ts
+  "indisponível": "indisponible",
+  "não consegui encerrar a sessão: {0}": "impossible de fermer la session : {0}",
+  "Agente {0} encerrado pelo escritório.": "Agent {0} fermé depuis le bureau.",
+  "terminal desligado: {0}": "terminal désactivé : {0}",
+  "sessão sem id válido para retomar": "session sans id valide à reprendre",
+  "não sei a pasta desta sessão": "je ne connais pas le dossier de cette session",
+  "não consegui encerrar a sessão no outro terminal: {0}": "impossible de fermer la session dans l'autre terminal : {0}",
+  "Agente {0} não encerrou em {1} s: encerrando à força.": "L'agent {0} ne s'est pas fermé en {1} s : fermeture forcée.",
+  "Falha ao encerrar à força o processo {0}: {1}": "Échec de l'arrêt forcé du processus {0} : {1}",
+  "a sessão no outro terminal não encerrou nem à força; ela continua aberta lá": "la session dans l'autre terminal ne s'est pas fermée, même de force ; elle reste ouverte là-bas",
+  "a sessão foi encerrada no outro terminal, mas não abriu aqui ({0}); para continuar: claude --resume {1}": "la session a été fermée dans l'autre terminal, mais ne s'est pas ouverte ici ({0}) ; pour continuer : claude --resume {1}",
+  "Agente {0} assumido pelo escritório (sessão {1}).": "Agent {0} repris en main par le bureau (session {1}).",
+  "entrada inválida": "entrée invalide",
+  "informe a pasta do projeto (caminho absoluto)": "indiquez le dossier du projet (chemin absolu)",
+  "pasta não encontrada: {0}": "dossier introuvable : {0}",
+  "limite de {0} terminais abertos": "limite de {0} terminaux ouverts",
+  "não consegui abrir o Claude Code: {0}": "impossible d'ouvrir Claude Code : {0}",
+  "Terminal {0} aberto em {1} (conta {2}, retomando {3}).": "Terminal {0} ouvert dans {1} (compte {2}, reprise de {3}).",
+  "Terminal {0} aberto em {1} (conta {2}).": "Terminal {0} ouvert dans {1} (compte {2}).",
+  "só dá para encerrar ou assumir o agente principal de uma sessão": "seul l'agent principal d'une session peut être fermé ou repris en main",
+  "agente sem processo conhecido": "agent sans processus connu",
+  "a sessão não está mais aberta": "la session n'est plus ouverte",
+  "o processo não é mais desta sessão": "le processus n'appartient plus à cette session",
+  "não consegui conferir o processo desta sessão (talvez já tenha encerrado)": "impossible de vérifier le processus de cette session (elle est peut-être déjà fermée)",
+  "o processo {0} não é mais esta sessão do Claude Code (registro antigo?)": "le processus {0} n'est plus cette session Claude Code (ancien enregistrement ?)",
+  "Falha ao encerrar o terminal {0}: {1}": "Échec de la fermeture du terminal {0} : {1}",
+  "terminal não encontrado": "terminal introuvable",
+  "o terminal já foi encerrado": "le terminal a déjà été fermé",
+  "node-pty não instalado ({0})": "node-pty non installé ({0})",
+  "node-pty sem spawn()": "node-pty sans spawn()",
+  "node-pty não consegue abrir terminais ({0})": "node-pty ne parvient pas à ouvrir de terminaux ({0})",
+  "node-pty abriu o terminal de teste, mas ele saiu com o código {0}": "node-pty a ouvert le terminal de test, mais il s'est fermé avec le code {0}",
+
+  // server/pty/screen.ts
+  "@xterm/headless sem Terminal ou SerializeAddon": "@xterm/headless sans Terminal ni SerializeAddon",
+  "@xterm/headless não instalado ({0})": "@xterm/headless non installé ({0})",
+
+  // server/pty/winkill.ts
+  "pid inválido": "pid invalide",
+  "início do processo desconhecido": "démarrage du processus inconnu",
+  "o processo não é mais aquela sessão": "le processus n'est plus cette session",
+
+  // server/sources/tail.ts
+  "Linha com mais de {0} MiB em {1} foi ignorada até a próxima quebra.": "Ligne de plus de {0} Mio dans {1} ignorée jusqu'au prochain saut de ligne.",
+
+  // server/sources/watcher.ts
+  "Linha do transcript de {0} ignorada: {1}": "Ligne du transcript de {0} ignorée : {1}",
+
+  // scripts/statusline-install.ts
+  "o arquivo mudou desde a leitura; nada foi alterado, rode o comando de novo": "le fichier a changé depuis la lecture ; rien n'a été modifié, relancez la commande",
 };

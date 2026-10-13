@@ -19,6 +19,7 @@ import { errMsg, log } from '../log';
 import { pidAlive } from '../sources/registry';
 import { readProcInfo, sameProcess, type ProcInfo, type RegisteredProc } from './procinfo';
 import { killWithConsoleReset } from './winkill';
+import { tr } from '../../shared/i18n';
 
 /** O que o gerenciador usa do node-pty (permite trocar nos testes). */
 export interface PtyProcess {
@@ -206,7 +207,7 @@ export class PtyManager {
   }
 
   status(): PtyStatus {
-    return this.opts.spawn ? { enabled: true } : { enabled: false, reason: this.opts.disabledReason ?? 'indisponível' };
+    return this.opts.spawn ? { enabled: true } : { enabled: false, reason: this.opts.disabledReason ?? tr('indisponível') };
   }
 
   list(): PtyInfo[] {
@@ -237,9 +238,9 @@ export class PtyManager {
     try {
       await this.killPid(ext.pid, ext.proc);
     } catch (err) {
-      throw new PtyError(500, `não consegui encerrar a sessão: ${errMsg(err)}`);
+      throw new PtyError(500, tr('não consegui encerrar a sessão: {0}', [errMsg(err)]));
     }
-    log.info(`Agente ${agentId} encerrado pelo escritório.`);
+    log.info(tr('Agente {0} encerrado pelo escritório.', [agentId]));
   }
 
   /**
@@ -258,30 +259,30 @@ export class PtyManager {
   private async doTakeover(agentId: string, size: { cols?: unknown; rows?: unknown }): Promise<PtyInfo> {
     // Um tique: o pedido já está em this.takeovers (conta no limite abaixo como "esta" tomada).
     await Promise.resolve();
-    if (!this.opts.spawn) throw new PtyError(503, `terminal desligado: ${this.opts.disabledReason ?? 'indisponível'}`);
+    if (!this.opts.spawn) throw new PtyError(503, tr('terminal desligado: {0}', [this.opts.disabledReason ?? tr('indisponível')]));
     const own = this.byAgent(agentId);
     if (own) return { ...own.info };
     const agent = this.mainAgent(agentId);
-    if (!SESSION_ID.test(agent.sessionId)) throw new PtyError(409, 'sessão sem id válido para retomar');
-    if (!agent.cwd) throw new PtyError(409, 'não sei a pasta desta sessão');
+    if (!SESSION_ID.test(agent.sessionId)) throw new PtyError(409, tr('sessão sem id válido para retomar'));
+    if (!agent.cwd) throw new PtyError(409, tr('não sei a pasta desta sessão'));
     // As outras tomadas em andamento já têm uma vaga prometida.
     const plan = this.plan({ cwd: agent.cwd, account: agent.account, cols: size.cols, rows: size.rows }, this.takeovers.size - 1);
     const ext = await this.external(agentId);
     try {
       await this.killPid(ext.pid, ext.proc);
     } catch (err) {
-      throw new PtyError(500, `não consegui encerrar a sessão no outro terminal: ${errMsg(err)}`);
+      throw new PtyError(500, tr('não consegui encerrar a sessão no outro terminal: {0}', [errMsg(err)]));
     }
     if (!(await this.waitExit(ext.pid, TAKEOVER_WAIT_MS))) {
       // Não saiu a tempo: encerra à força (se ainda for o mesmo processo) e espera mais um pouco.
-      log.warn(`Agente ${agentId} não encerrou em ${TAKEOVER_WAIT_MS / 1000} s: encerrando à força.`);
+      log.warn(tr('Agente {0} não encerrou em {1} s: encerrando à força.', [agentId, TAKEOVER_WAIT_MS / 1000]));
       try {
         if (await this.stillSame(ext.pid, ext.proc)) this.forceKill(ext.pid);
       } catch (err) {
-        log.warn(`Falha ao encerrar à força o processo ${ext.pid}: ${errMsg(err)}`);
+        log.warn(tr('Falha ao encerrar à força o processo {0}: {1}', [ext.pid, errMsg(err)]));
       }
       if (!(await this.waitExit(ext.pid, FORCE_WAIT_MS))) {
-        throw new PtyError(500, 'a sessão no outro terminal não encerrou nem à força; ela continua aberta lá');
+        throw new PtyError(500, tr('a sessão no outro terminal não encerrou nem à força; ela continua aberta lá'));
       }
     }
     let info: PtyInfo;
@@ -289,9 +290,9 @@ export class PtyManager {
       info = this.spawn(plan, { resume: agent.sessionId, from: agentId });
     } catch (err) {
       // A sessão de lá já foi encerrada: dizer como continuar a conversa.
-      throw new PtyError(500, `a sessão foi encerrada no outro terminal, mas não abriu aqui (${errMsg(err)}); para continuar: claude --resume ${agent.sessionId}`);
+      throw new PtyError(500, tr('a sessão foi encerrada no outro terminal, mas não abriu aqui ({0}); para continuar: claude --resume {1}', [errMsg(err), agent.sessionId]));
     }
-    log.info(`Agente ${agentId} assumido pelo escritório (sessão ${agent.sessionId}).`);
+    log.info(tr('Agente {0} assumido pelo escritório (sessão {1}).', [agentId, agent.sessionId]));
     return info;
   }
 
@@ -327,7 +328,7 @@ export class PtyManager {
   }
 
   input(id: string, data: unknown): void {
-    if (typeof data !== 'string' || data.length > 64 * 1024) throw new PtyError(400, 'entrada inválida');
+    if (typeof data !== 'string' || data.length > 64 * 1024) throw new PtyError(400, tr('entrada inválida'));
     this.running(id).proc.write(data);
   }
 
@@ -367,11 +368,11 @@ export class PtyManager {
 
   /** Valida o pedido de uma sessão nova (`reserved`: vagas já prometidas a tomadas em andamento). */
   private plan(p: { cwd: unknown; account?: unknown; cols?: unknown; rows?: unknown }, reserved = 0): SpawnPlan {
-    if (!this.opts.spawn) throw new PtyError(503, `terminal desligado: ${this.opts.disabledReason ?? 'indisponível'}`);
+    if (!this.opts.spawn) throw new PtyError(503, tr('terminal desligado: {0}', [this.opts.disabledReason ?? tr('indisponível')]));
     // Antes de tudo (o "assumir" encerra a sessão de lá depois daqui): um claude que não roda abriria um terminal que
     // sai na hora.
-    if (!isExecutableFile(this.opts.claudeBin)) throw new PtyError(503, `o executável do Claude Code não roda: ${this.opts.claudeBin} (confira o HABBLAUD_CLAUDE_BIN)`);
-    if (typeof p.cwd !== 'string' || !isAbsolute(p.cwd)) throw new PtyError(400, 'informe a pasta do projeto (caminho absoluto)');
+    if (!isExecutableFile(this.opts.claudeBin)) throw new PtyError(503, tr('o executável do Claude Code não roda: {0} (confira o HABBLAUD_CLAUDE_BIN)', [this.opts.claudeBin]));
+    if (typeof p.cwd !== 'string' || !isAbsolute(p.cwd)) throw new PtyError(400, tr('informe a pasta do projeto (caminho absoluto)'));
     const cwd = resolve(p.cwd);
     let isDir = false;
     try {
@@ -379,18 +380,18 @@ export class PtyManager {
     } catch {
       // tratado abaixo
     }
-    if (!isDir) throw new PtyError(400, `pasta não encontrada: ${cwd}`);
+    if (!isDir) throw new PtyError(400, tr('pasta não encontrada: {0}', [cwd]));
     const accounts = this.opts.accounts();
     const account = typeof p.account === 'string' ? accounts.find((a) => a.id === p.account) : (accounts.find((a) => a.isDefault) ?? accounts[0]);
-    if (!account) throw new PtyError(400, 'conta desconhecida');
+    if (!account) throw new PtyError(400, tr('conta desconhecida'));
     const running = [...this.ptys.values()].filter((t) => t.info.exitedAt === undefined).length;
-    if (running + Math.max(0, reserved) >= MAX_PTYS) throw new PtyError(429, `limite de ${MAX_PTYS} terminais abertos`);
+    if (running + Math.max(0, reserved) >= MAX_PTYS) throw new PtyError(429, tr('limite de {0} terminais abertos', [MAX_PTYS]));
     return { cwd, account, cols: clampInt(p.cols, 20, 400, 100), rows: clampInt(p.rows, 5, 200, 30) };
   }
 
   private spawn(plan: SpawnPlan, p: { resume?: string; from?: string } = {}): PtyInfo {
     const spawn = this.opts.spawn;
-    if (!spawn) throw new PtyError(503, `terminal desligado: ${this.opts.disabledReason ?? 'indisponível'}`);
+    if (!spawn) throw new PtyError(503, tr('terminal desligado: {0}', [this.opts.disabledReason ?? tr('indisponível')]));
     const { cwd, account, cols, rows } = plan;
     const env: NodeJS.ProcessEnv = { ...(this.opts.env ?? process.env), TERM: 'xterm-256color', COLORTERM: 'truecolor' };
     for (const k of INHERITED_SESSION_VARS) delete env[k];
@@ -402,7 +403,7 @@ export class PtyManager {
       const args = p.resume ? ['--resume', p.resume] : [];
       proc = spawn(this.opts.claudeBin, args, { cwd, cols, rows, env });
     } catch (err) {
-      throw new PtyError(500, `não consegui abrir o Claude Code: ${errMsg(err)}`);
+      throw new PtyError(500, tr('não consegui abrir o Claude Code: {0}', [errMsg(err)]));
     }
     const id = `p${++this.seq}-${proc.pid}`;
     const info: PtyInfo = { id, pid: proc.pid, cwd, account: account.id, agentId: `${account.id}:${proc.pid}`, startedAt: this.now() };
@@ -421,7 +422,7 @@ export class PtyManager {
       this.broadcast(pty, 'exit', { code: exitCode });
       this.opts.onChange();
     });
-    log.info(`Terminal ${id} aberto em ${cwd} (conta ${account.id}${p.resume ? `, retomando ${p.resume}` : ''}).`);
+    log.info(p.resume ? tr('Terminal {0} aberto em {1} (conta {2}, retomando {3}).', [id, cwd, account.id, p.resume]) : tr('Terminal {0} aberto em {1} (conta {2}).', [id, cwd, account.id]));
     this.opts.onChange();
     return { ...info };
   }
@@ -433,8 +434,8 @@ export class PtyManager {
 
   private mainAgent(agentId: string): PtyAgentRef {
     const agent = this.opts.agent(agentId);
-    if (!agent) throw new PtyError(404, 'agente não encontrado');
-    if (agent.kind !== 'main') throw new PtyError(400, 'só dá para encerrar ou assumir o agente principal de uma sessão');
+    if (!agent) throw new PtyError(404, tr('agente não encontrado'));
+    if (agent.kind !== 'main') throw new PtyError(400, tr('só dá para encerrar ou assumir o agente principal de uma sessão'));
     return agent;
   }
 
@@ -446,25 +447,25 @@ export class PtyManager {
     const agent = this.mainAgent(agentId);
     const m = MAIN_ID.exec(agent.id);
     const pid = m ? Number(m[2]) : NaN;
-    if (!m || m[1] !== agent.account || !Number.isSafeInteger(pid) || pid <= 0) throw new PtyError(400, 'agente sem processo conhecido');
+    if (!m || m[1] !== agent.account || !Number.isSafeInteger(pid) || pid <= 0) throw new PtyError(400, tr('agente sem processo conhecido'));
     const account = this.opts.accounts().find((a) => a.id === agent.account);
-    if (!account) throw new PtyError(400, 'conta desconhecida');
+    if (!account) throw new PtyError(400, tr('conta desconhecida'));
     let registered: unknown;
     try {
       registered = this.readSession(account.dir, pid);
     } catch {
-      throw new PtyError(409, 'a sessão não está mais aberta');
+      throw new PtyError(409, tr('a sessão não está mais aberta'));
     }
     const r = (registered ?? {}) as { sessionId?: unknown; startedAt?: unknown; procStart?: unknown };
-    if (r.sessionId !== agent.sessionId) throw new PtyError(409, 'o processo não é mais desta sessão');
-    if (!this.isAlive(pid)) throw new PtyError(409, 'a sessão não está mais aberta');
+    if (r.sessionId !== agent.sessionId) throw new PtyError(409, tr('o processo não é mais desta sessão'));
+    if (!this.isAlive(pid)) throw new PtyError(409, tr('a sessão não está mais aberta'));
     const reg: RegisteredProc = {
       startedAt: typeof r.startedAt === 'number' ? r.startedAt : undefined,
       procStart: typeof r.procStart === 'string' ? r.procStart : undefined,
     };
     const proc = await this.procInfo(pid);
-    if (!proc) throw new PtyError(409, 'não consegui conferir o processo desta sessão (talvez já tenha encerrado)');
-    if (!sameProcess(reg, proc)) throw new PtyError(409, `o processo ${pid} não é mais esta sessão do Claude Code (registro antigo?)`);
+    if (!proc) throw new PtyError(409, tr('não consegui conferir o processo desta sessão (talvez já tenha encerrado)'));
+    if (!sameProcess(reg, proc)) throw new PtyError(409, tr('o processo {0} não é mais esta sessão do Claude Code (registro antigo?)', [pid]));
     return { pid, proc };
   }
 
@@ -486,19 +487,19 @@ export class PtyManager {
     try {
       pty.proc.kill();
     } catch (err) {
-      log.warn(`Falha ao encerrar o terminal ${pty.info.id}: ${errMsg(err)}`);
+      log.warn(tr('Falha ao encerrar o terminal {0}: {1}', [pty.info.id, errMsg(err)]));
     }
   }
 
   private get(id: string): Pty {
     const pty = this.ptys.get(id);
-    if (!pty) throw new PtyError(404, 'terminal não encontrado');
+    if (!pty) throw new PtyError(404, tr('terminal não encontrado'));
     return pty;
   }
 
   private running(id: string): Pty {
     const pty = this.get(id);
-    if (pty.info.exitedAt !== undefined) throw new PtyError(409, 'o terminal já foi encerrado');
+    if (pty.info.exitedAt !== undefined) throw new PtyError(409, tr('o terminal já foi encerrado'));
     return pty;
   }
 
@@ -535,9 +536,9 @@ export async function loadPty(): Promise<{ spawn: SpawnPty | null; reason?: stri
     };
     ptySpawn = mod.spawn ?? mod.default?.spawn;
   } catch (err) {
-    return { spawn: null, reason: `node-pty não instalado (${errMsg(err)})` };
+    return { spawn: null, reason: tr('node-pty não instalado ({0})', [errMsg(err)]) };
   }
-  if (!ptySpawn) return { spawn: null, reason: 'node-pty sem spawn()' };
+  if (!ptySpawn) return { spawn: null, reason: tr('node-pty sem spawn()') };
   const nativeSpawn = ptySpawn;
   const spawn: SpawnPty = (file, args, o) => nativeSpawn(file, args, { name: 'xterm-256color', cwd: o.cwd, cols: o.cols, rows: o.rows, env: o.env });
   // No Windows não há spawn-helper; o teste de spawn foi pensado para o macOS e o Linux.
@@ -580,7 +581,7 @@ export function spawnProblem(spawn: SpawnPty, timeoutMs = 5_000): Promise<string
   try {
     proc = spawn(process.execPath, ['-e', ''], { cwd: process.cwd(), cols: 80, rows: 24, env: process.env });
   } catch (err) {
-    return Promise.resolve(`node-pty não consegue abrir terminais (${errMsg(err)})`);
+    return Promise.resolve(tr('node-pty não consegue abrir terminais ({0})', [errMsg(err)]));
   }
   return new Promise((ok) => {
     // Abriu e não saiu a tempo: o spawn funciona, que é o que interessa aqui.
@@ -594,7 +595,7 @@ export function spawnProblem(spawn: SpawnPty, timeoutMs = 5_000): Promise<string
     }, timeoutMs);
     proc.onExit(({ exitCode }) => {
       clearTimeout(timer);
-      ok(exitCode === 0 ? null : `node-pty abriu o terminal de teste, mas ele saiu com o código ${exitCode}`);
+      ok(exitCode === 0 ? null : tr('node-pty abriu o terminal de teste, mas ele saiu com o código {0}', [exitCode]));
     });
   });
 }

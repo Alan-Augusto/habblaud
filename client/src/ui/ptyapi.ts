@@ -2,6 +2,7 @@
 import { isDemoId } from '../../../shared/timeline';
 import type { AgentInfo, PtyInfo } from '../../../shared/types';
 import { providerOf } from './provider';
+import { tr } from '../../../shared/i18n';
 
 /**
  * Dá para encerrar ou assumir este agente pelo escritório? Só o agente principal de uma sessão do Claude Code: o
@@ -16,11 +17,11 @@ export async function postPty<T = unknown>(url: string, body: unknown): Promise<
   try {
     res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
   } catch {
-    throw new Error('o Habblaud não respondeu');
+    throw new Error(tr('o Habblaud não respondeu'));
   }
   if (res.status === 204) return undefined;
   const j = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new Error(j.error ?? `erro ${res.status}`);
+  if (!res.ok) throw new Error(j.error ?? tr('erro {0}', [res.status]));
   return j as T;
 }
 

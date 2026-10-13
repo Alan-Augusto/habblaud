@@ -4,6 +4,7 @@
 // eles, a reprodução da saída bruta perderia esses modos: colar várias linhas viraria vários prompts.
 import { errMsg } from '../log';
 import type { PtyScreen, ScreenFactory } from './manager';
+import { tr } from '../../shared/i18n';
 
 /** Linhas de rolagem guardadas por terminal. */
 const SCROLLBACK = 5_000;
@@ -26,7 +27,7 @@ export async function loadHeadlessScreen(): Promise<{ create: ScreenFactory | nu
     const serialize = (await import('@xterm/addon-serialize')) as unknown as { SerializeAddon?: unknown; default?: { SerializeAddon?: unknown } };
     const Terminal = (headless.Terminal ?? headless.default?.Terminal) as (new (o: Record<string, unknown>) => HeadlessTerminal) | undefined;
     const Serialize = (serialize.SerializeAddon ?? serialize.default?.SerializeAddon) as (new () => SerializeAddon) | undefined;
-    if (!Terminal || !Serialize) return { create: null, reason: '@xterm/headless sem Terminal ou SerializeAddon' };
+    if (!Terminal || !Serialize) return { create: null, reason: tr('@xterm/headless sem Terminal ou SerializeAddon') };
     return {
       create: (cols, rows): PtyScreen => {
         const term = new Terminal({ cols, rows, scrollback: SCROLLBACK, allowProposedApi: true });
@@ -41,6 +42,6 @@ export async function loadHeadlessScreen(): Promise<{ create: ScreenFactory | nu
       },
     };
   } catch (err) {
-    return { create: null, reason: `@xterm/headless não instalado (${errMsg(err)})` };
+    return { create: null, reason: tr('@xterm/headless não instalado ({0})', [errMsg(err)]) };
   }
 }

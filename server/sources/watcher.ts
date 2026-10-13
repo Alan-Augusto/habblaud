@@ -159,7 +159,7 @@ function parseWatchedLine(state: TranscriptState, line: string, ctx: ParseContex
   try {
     return parseLine(state, line, ctx);
   } catch (err) {
-    log.warnOnce(`line:${ctx.idPrefix}:${errMsg(err)}`, `Linha do transcript de ${ctx.idPrefix} ignorada: ${errMsg(err)}`);
+    log.warnOnce(`line:${ctx.idPrefix}:${errMsg(err)}`, tr('Linha do transcript de {0} ignorada: {1}', [ctx.idPrefix, errMsg(err)]));
     return { activities: [], signals: [], changed: false, at: ctx.now };
   }
 }

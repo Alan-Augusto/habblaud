@@ -6,6 +6,7 @@ import type { UiContext } from './context';
 import { h, setHidden, setText, setTitle } from './dom';
 import type { PtyControl } from './pty';
 import { ptyControllable } from './ptyapi';
+import { tr } from '../../../shared/i18n';
 
 const CONFIRM_MS = 4000;
 
@@ -30,9 +31,9 @@ export class TermActions {
     private onStop?: (agent: AgentInfo) => Promise<void>,
   ) {
     this.takeBtn = h('button', { class: 'ui-btn ui-btn--sm ui-btn--accent', type: 'button', on: { click: () => this.run('takeover') } });
-    setTitle(this.takeBtn, 'Encerra a sessão no terminal onde ela está e continua a mesma conversa aqui, podendo digitar');
+    setTitle(this.takeBtn, tr('Encerra a sessão no terminal onde ela está e continua a mesma conversa aqui, podendo digitar'));
     this.stopBtn = h('button', { class: 'ui-btn ui-btn--sm ui-btn--danger', type: 'button', on: { click: () => this.run('stop') } });
-    setTitle(this.stopBtn, 'Encerra esta sessão do Claude Code (a conversa fica salva)');
+    setTitle(this.stopBtn, tr('Encerra esta sessão do Claude Code (a conversa fica salva)'));
     this.msg = h('span', { class: 'ui-termact__msg', role: 'status', hidden: true });
     this.el = h('span', { class: 'ui-termact', hidden: true }, this.msg, this.takeBtn, this.stopBtn);
   }
@@ -48,8 +49,8 @@ export class TermActions {
     setHidden(this.el, !usable);
     if (!usable) return;
     setHidden(this.takeBtn, !this.withTakeover);
-    setText(this.takeBtn, this.confirm === 'takeover' ? 'Confirmar?' : 'Assumir daqui');
-    setText(this.stopBtn, this.confirm === 'stop' ? 'Confirmar?' : 'Encerrar');
+    setText(this.takeBtn, this.confirm === 'takeover' ? tr('Confirmar?') : tr('Assumir daqui'));
+    setText(this.stopBtn, this.confirm === 'stop' ? tr('Confirmar?') : tr('Encerrar'));
     this.takeBtn.classList.toggle('is-confirm', this.confirm === 'takeover');
     this.stopBtn.classList.toggle('is-confirm', this.confirm === 'stop');
     this.takeBtn.disabled = this.busy;
@@ -71,12 +72,12 @@ export class TermActions {
     }
     this.resetConfirm();
     this.busy = true;
-    this.showMsg(kind === 'stop' ? 'Encerrando…' : 'Assumindo…');
+    this.showMsg(kind === 'stop' ? tr('Encerrando…') : tr('Assumindo…'));
     this.ctx.invalidate();
     const job = kind === 'stop' ? (this.onStop ? this.onStop(a) : this.pty.stop(a.id)) : this.pty.takeover(a.id);
     job
       .then(() => this.showMsg(''))
-      .catch((err: Error) => this.showMsg(`Não deu: ${err.message}`, true))
+      .catch((err: Error) => this.showMsg(tr('Não deu: {0}', [err.message]), true))
       .finally(() => {
         this.busy = false;
         this.ctx.invalidate();

@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { postPty } from './ptyapi';
+import { tr } from '../../../shared/i18n';
 
 const RESIZE_DEBOUNCE_MS = 120;
 
@@ -67,7 +68,7 @@ export class PtyPane {
       } catch {
         // sem código
       }
-      this.term.write(`\r\n\x1b[2m[Claude Code encerrado${code ? ` (código ${code})` : ''}]\x1b[0m\r\n`);
+      this.term.write(`\r\n\x1b[2m[${code ? tr('Claude Code encerrado (código {0})', [code]) : tr('Claude Code encerrado')}]\x1b[0m\r\n`);
       es.close();
       this.onExit();
     });

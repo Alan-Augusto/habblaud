@@ -286,7 +286,7 @@ export function writeSettings(file: string, settings: Settings, raw: string | un
   }
   if (current !== raw) {
     unlinkSync(tmp);
-    throw new Error('o arquivo mudou desde a leitura; nada foi alterado, rode o comando de novo');
+    throw new Error(tr('o arquivo mudou desde a leitura; nada foi alterado, rode o comando de novo'));
   }
   let backup: string | undefined;
   if (current !== undefined) {

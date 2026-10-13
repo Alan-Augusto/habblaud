@@ -90,7 +90,7 @@ const office = new Office({
   terminal: config.terminal,
   permissions: () => late.permissions?.snapshot() ?? new Map(),
   messages: config.messages ? () => late.messages?.reachable() ?? new Set() : undefined,
-  ptys: () => (late.ptys ? { status: late.ptys.status(), list: late.ptys.list() } : { status: { enabled: false, reason: late.ptyOff ?? 'desligado' }, list: [] }),
+  ptys: () => (late.ptys ? { status: late.ptys.status(), list: late.ptys.list() } : { status: { enabled: false, reason: late.ptyOff ?? tr('desligado') }, list: [] }),
   updates: () => updates.status(),
 });
 // Fontes de agentes, uma por ferramenta (sources/source.ts): a do Claude Code e, depois dela, a do Codex (quando há
@@ -164,11 +164,11 @@ let spawnPty: SpawnPty | null = null;
 let ptyScreen: ScreenFactory | undefined;
 let ptyOff: string | undefined;
 const ptyFlag = process.env.HABBLAUD_PTY?.trim();
-if (!isTruthy(ptyFlag)) ptyOff = ptyFlag ? `desligado por HABBLAUD_PTY=${ptyFlag}` : 'desligado (ligue com HABBLAUD_PTY=1)';
-else if (config.inDocker) ptyOff = 'indisponível no Docker (rode com npm start)';
-else if (!config.terminal) ptyOff = `mesma trava do terminal (${terminalOffReason(process.env, config.host, config.inDocker)})`;
-else if (!claudeBin) ptyOff = claudeBinSetting ? `HABBLAUD_CLAUDE_BIN não encontrado no PATH (${claudeBinSetting})` : 'executável "claude" não encontrado no PATH (defina HABBLAUD_CLAUDE_BIN)';
-else if (!isExecutableFile(claudeBin)) ptyOff = `o executável do Claude Code não roda: ${claudeBin} (confira o HABBLAUD_CLAUDE_BIN)`;
+if (!isTruthy(ptyFlag)) ptyOff = ptyFlag ? tr('desligado por HABBLAUD_PTY={0}', [ptyFlag]) : tr('desligado (ligue com HABBLAUD_PTY=1)');
+else if (config.inDocker) ptyOff = tr('indisponível no Docker (rode com npm start)');
+else if (!config.terminal) ptyOff = tr('mesma trava do terminal ({0})', [terminalOffReason(process.env, config.host, config.inDocker)]);
+else if (!claudeBin) ptyOff = claudeBinSetting ? tr('HABBLAUD_CLAUDE_BIN não encontrado no PATH ({0})', [claudeBinSetting]) : tr('executável "claude" não encontrado no PATH (defina HABBLAUD_CLAUDE_BIN)');
+else if (!isExecutableFile(claudeBin)) ptyOff = tr('o executável do Claude Code não roda: {0} (confira o HABBLAUD_CLAUDE_BIN)', [claudeBin]);
 else {
   const loaded = await loadPty();
   spawnPty = loaded.spawn;
@@ -176,7 +176,7 @@ else {
   if (spawnPty) {
     const screen = await loadHeadlessScreen();
     ptyScreen = screen.create ?? undefined;
-    if (screen.reason) log.warn(`Terminal interativo sem a tela completa (${screen.reason}): ao reconectar, modos como a colagem entre colchetes podem se perder.`);
+    if (screen.reason) log.warn(tr('Terminal interativo sem a tela completa ({0}): ao reconectar, modos como a colagem entre colchetes podem se perder.', [screen.reason]));
   }
 }
 const ptys = spawnPty

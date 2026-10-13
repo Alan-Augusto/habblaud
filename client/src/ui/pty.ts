@@ -15,6 +15,7 @@ import type { PtyPane } from './ptypane';
 import { TermActions } from './termactions';
 import { TermTabs } from './termtabs';
 import { createAccountChip, updateAccountChip } from './widgets';
+import { tr } from '../../../shared/i18n';
 
 /** O que a gaveta e os atalhos usam do terminal interativo. */
 export interface PtyControl {
@@ -68,15 +69,15 @@ export class PtyPanel implements UiComponent, PtyControl {
       if (this.info) await closePty(this.info.id);
     });
     this.tabs = new TermTabs(ctx);
-    const close = iconButton(ICONS.close, 'Fechar a janela (a sessão continua rodando)', () => this.close(), 'ui-icon-btn--sm ui-term__close');
+    const close = iconButton(ICONS.close, tr('Fechar a janela (a sessão continua rodando)'), () => this.close(), 'ui-icon-btn--sm ui-term__close');
     const bar = h(
       'div',
       { class: 'ui-term__bar' },
       icon,
-      h('span', { class: 'ui-term__kind', text: 'terminal' }),
+      h('span', { class: 'ui-term__kind', text: tr('terminal') }),
       h('div', { class: 'ui-term__who' }, this.accEl, this.nameEl, this.roomEl),
       this.stateEl,
-      h('span', { class: 'ui-pty__live', text: 'interativo' }),
+      h('span', { class: 'ui-pty__live', text: tr('interativo') }),
       this.actions.el,
       maximizeButton(() => this.movable, () => requestAnimationFrame(() => this.pane?.refit(true))),
       close,
@@ -86,11 +87,11 @@ export class PtyPanel implements UiComponent, PtyControl {
     this.away = h(
       'div',
       { class: 'ui-pty__away', hidden: true },
-      h('strong', { text: 'Esta sessão está aberta em outro terminal' }),
+      h('strong', { text: tr('Esta sessão está aberta em outro terminal') }),
       this.awayTitle,
-      h('p', { class: 'ui-muted', text: 'Use "Assumir daqui" (no topo) para encerrar lá e continuar a mesma conversa nesta janela, podendo digitar.' }),
+      h('p', { class: 'ui-muted', text: tr('Use "Assumir daqui" (no topo) para encerrar lá e continuar a mesma conversa nesta janela, podendo digitar.') }),
     );
-    this.el = h('section', { class: 'ui-term ui-pty', role: 'dialog', hidden: true, attrs: { 'aria-label': 'Terminal' } }, bar, this.tabs.el, this.screen, this.away);
+    this.el = h('section', { class: 'ui-term ui-pty', role: 'dialog', hidden: true, attrs: { 'aria-label': tr('Terminal') } }, bar, this.tabs.el, this.screen, this.away);
     // Teclas digitadas no terminal são do Claude Code, não dos atalhos do escritório.
     this.el.addEventListener('keydown', (e) => e.stopPropagation());
     this.movable = new Movable(this.el, bar, { key: 'habblaud.move.term', enabled: () => !ctx.isNarrow(), onMove: () => this.pane?.refit(true) });
@@ -102,8 +103,8 @@ export class PtyPanel implements UiComponent, PtyControl {
   }
 
   get reason(): string {
-    if (this.ctx.store.replaying) return 'Sem terminal no timelapse';
-    return this.ctx.store.snapshot?.meta.pty?.reason ?? 'Terminal interativo desligado';
+    if (this.ctx.store.replaying) return tr('Sem terminal no timelapse');
+    return this.ctx.store.snapshot?.meta.pty?.reason ?? tr('Terminal interativo desligado');
   }
 
   get isOpen(): boolean {
@@ -150,7 +151,7 @@ export class PtyPanel implements UiComponent, PtyControl {
 
   async stop(agentId: string): Promise<void> {
     await stopAgent(agentId);
-    this.ctx.announce('Sessão encerrada.');
+    this.ctx.announce(tr('Sessão encerrada.'));
   }
 
   render(): void {
@@ -170,7 +171,7 @@ export class PtyPanel implements UiComponent, PtyControl {
     updateAccountChip(this.accEl, this.ctx.account(cur.account), cur.account);
     setText(this.roomEl, agent?.title ?? cur.cwd);
     const ended = cur.exitedAt !== undefined;
-    setText(this.stateEl, ended ? 'encerrado' : agent ? '' : cur.resumed ? 'retomando…' : 'iniciando…');
+    setText(this.stateEl, ended ? tr('encerrado') : agent ? '' : cur.resumed ? tr('retomando…') : tr('iniciando…'));
     this.actions.withTakeover = false;
     this.actions.render(ended ? null : (agent ?? null));
     this.tabs.render(agent ? agent.id : null);
@@ -183,11 +184,11 @@ export class PtyPanel implements UiComponent, PtyControl {
     const own = this.ptyOf(id);
     if (own) return this.show(own);
     const agent = this.ctx.agent(id);
-    setText(this.nameEl, agent?.name ?? 'Agente');
+    setText(this.nameEl, agent?.name ?? tr('Agente'));
     if (agent) updateAccountChip(this.accEl, this.ctx.account(agent.account), agent.account);
     const room = agent ? this.ctx.store.room(agent.roomId) : undefined;
     setText(this.roomEl, room?.name ?? '');
-    setText(this.stateEl, agent ? 'em outro terminal' : 'saiu do escritório');
+    setText(this.stateEl, agent ? tr('em outro terminal') : tr('saiu do escritório'));
     setText(this.awayTitle, agent?.title ?? '');
     setHidden(this.awayTitle, !agent?.title);
     this.actions.withTakeover = true;

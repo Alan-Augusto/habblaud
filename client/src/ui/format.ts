@@ -11,10 +11,11 @@ const LOCALE = intlLocale();
 const numberFmt1 = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1 });
 const integerFmt = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 });
 const usdFmt = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const clockFmt = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' });
-const clockSecFmt = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+// Relógio de 24 h em todos os idiomas (no inglês o AM/PM não cabe na coluna do feed).
+const clockFmt = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const clockSecFmt = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
 const weekdayFmt = new Intl.DateTimeFormat(LOCALE, { weekday: 'short' });
-const dateTimeFmt = new Intl.DateTimeFormat(LOCALE, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+const dateTimeFmt = new Intl.DateTimeFormat(LOCALE, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
 /** Tempo relativo no passado: "agora", "há 5 s", "há 3 min", "há 2 h", "há 4 d". */
 export function relativeTime(at: number, now: number): string {

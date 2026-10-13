@@ -17,11 +17,12 @@ do meio (0.**3**.0).
   personagens. **Automático**, o padrão, segue o calendário: Halloween de 1º a 31 de outubro e Natal de 1º de
   novembro a 26 de dezembro (no resto do ano, o visual de sempre). **Nenhum** deixa o visual de sempre o ano todo, e
   **Natal** e **Halloween** fixam um tema. A escolha fica salva no navegador.
-- **Interface em francês.** Os textos passam por `tr()` (`shared/i18n.ts`), com o português como língua de origem:
-  um texto sem tradução continua em PT. O idioma da interface segue o navegador e pode ser escolhido em
-  **Configurações › Idioma**; os textos montados pelo servidor (atividades, avisos, terminal) seguem o idioma do
-  sistema ou `HABBLAUD_LANG` (`pt-BR` ou `fr`), assim como os logs do servidor, os scripts de instalação
-  (`mod:install`, `docker:up`…) e o modo demonstração. `npm run i18n:check` lista os textos ainda sem tradução.
+- **Interface em inglês, espanhol e francês.** Os textos passam por `tr()` (`shared/i18n.ts`), com o português como
+  língua de origem: um texto sem tradução continua em PT. A interface segue o navegador e pode ser fixada em
+  **Configurações › Idioma**. Os textos montados pelo servidor (atividades, avisos, terminal, logs e scripts de
+  instalação) seguem `HABBLAUD_LANG` (`pt-BR`, `en`, `es` ou `fr`) e, sem ele, o idioma do sistema, menos o inglês
+  (muita máquina e todo container vêm em inglês por padrão): para o servidor em inglês, `HABBLAUD_LANG=en`.
+  `npm run i18n:check` lista os textos ainda sem tradução. O francês veio da comunidade (#67).
 
 ## [0.9.0] - 2026-10-13
 

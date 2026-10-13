@@ -1,25 +1,14 @@
-// Ponto de entrada do cliente: store (dados) -> mundo (canvas) -> UI (painéis).
-import { OfficeStore } from './net/store';
-import { createWorld } from './world';
-import { createUI } from './ui';
-import { migrateLegacyKeys, safeLocalStorage } from './ui/prefs';
-import { getLocale, tr } from '../../shared/i18n';
+// Ponto de entrada do cliente: primeiro o dicionário do idioma ativo (só ele vai para o navegador), depois o app
+// (client/src/app.ts), porque vários módulos chamam tr() ao carregar. Se o dicionário não carregar, fica em português.
+import { getLocale, registerDictionary, type Locale } from '../../shared/i18n';
 
-// Antes de tudo: o mundo (carteiras) e a UI (preferências) leem o localStorage ao serem criados.
-migrateLegacyKeys(safeLocalStorage());
+const LOADERS: Partial<Record<Locale, () => Promise<Readonly<Record<string, string>>>>> = {
+  en: () => import('../../shared/locales/en').then((m) => m.EN),
+  es: () => import('../../shared/locales/es').then((m) => m.ES),
+  fr: () => import('../../shared/locales/fr').then((m) => m.FR),
+};
 
-// Idioma escolhido (shared/i18n): leitores de tela e o corretor do navegador seguem o atributo lang.
-document.documentElement.lang = getLocale();
-document.querySelector('meta[name="description"]')?.setAttribute(
-  'content',
-  tr('Escritório virtual em pixel art que mostra, em tempo real, o que seus agentes do Claude Code estão fazendo.'),
-);
-
-const params = new URLSearchParams(location.search);
-const store = new OfficeStore({ mock: params.has('mock') });
-const world = createWorld(document.getElementById('world') as HTMLCanvasElement, store);
-createUI(document.getElementById('ui') as HTMLElement, store, world);
-store.connect();
-
-// Facilita a depuração pelo console do navegador.
-Object.assign(window, { habblaud: { store, world } });
+const locale = getLocale();
+const load = LOADERS[locale];
+const dictionary = load ? load().then((d) => registerDictionary(locale, d)).catch(() => undefined) : Promise.resolve();
+void dictionary.then(() => import('./app')).then((app) => app.start());
