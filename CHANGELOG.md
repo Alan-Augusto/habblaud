@@ -10,6 +10,12 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+## [0.11.0] - 2026-10-13
+
+Para atualizar: `git pull` e `npm run docker:up` (ele também atualiza o mod do Habblaud nas contas). O acesso pelo
+celular é opcional e fica desligado até você rodar `npm run remote:setup`; o passo a passo está no README, em
+"Celular com login e HTTPS". O Novo agente precisa de `HABBLAUD_PTY=1` no `.env`.
+
 ### Adicionado
 
 - **Celular com login e HTTPS (opcional, desligado até configurar):** `npm run remote:setup` pergunta usuário, senha
@@ -54,7 +60,6 @@ do meio (0.**3**.0).
 ### Corrigido
 
 - Celular: tocar num campo de texto não dá mais zoom (o Safari do iPhone amplia campos com letra menor que 16 px).
-
 - No timelapse, os avisos do canto ficam acima da barra de reprodução, em vez de cobrir a linha do tempo e os botões.
 - Com muitas contas ou a janela estreita, os cartões de uso vão para uma segunda linha da barra superior, em vez de
   cobrir os botões da direita (zoom, Meu dia, Configurações, Ajuda).
