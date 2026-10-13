@@ -3,7 +3,11 @@
 //
 //   POST /api/messages          (página)  {agentId, text}: 201 OutboxMessage (queued) | 400 | 404 | 409 | 429
 //   GET  /api/messages/:id      (página)  situação da mensagem: 200 OutboxMessage | 404
-//   POST /api/mod/inbox         (plugin)  {session, account?}: 200 {messages: InboxMessage[]} (e marca a presença)
+//   GET  /api/messages/commands/:agentId
+//                               (página)  comandos de barra da sessão do agente: 200 {commands: SessionCommand[]}
+//   POST /api/mod/inbox         (plugin)  {session, account?, commands?}: 200 {messages: InboxMessage[], needCommands?}
+//                                         (marca a presença; `commands` = a lista de comandos de barra da sessão, que
+//                                         o plugin manda quando ela muda ou quando a resposta traz `needCommands`)
 //   POST /api/mod/inbox/ack     (plugin)  {session, results: [{id, ok, error?}]}: 200 {ok: true}
 //   POST /api/codex/bridge/poll (auxiliar do Codex no host, npm run codex:bridge)
 //                                         {}: 200 {messages: [{id, account, codexHome, thread, text}]} (marca a presença)
@@ -14,6 +18,7 @@ import { InvalidRequest, MAX_OPEN, type MessageRegistry } from './registry';
 import { tr } from '../../shared/i18n';
 
 const ITEM = /^\/api\/messages\/([^/]+)$/;
+const COMMANDS = /^\/api\/messages\/commands\/([^/]+)$/;
 
 function methodNotAllowed(res: ServerResponse, allow: string): void {
   res.setHeader('Allow', allow);
@@ -42,7 +47,9 @@ export function createMessageRoutes(registry: MessageRegistry): (req: IncomingMe
   };
 
   const inbox = async (req: IncomingMessage, res: ServerResponse) => {
-    sendJson(res, 200, { messages: registry.inbox(await readJson(req)) });
+    const body = await readJson(req);
+    const messages = registry.inbox(body);
+    sendJson(res, 200, registry.lacksCommands(body) ? { messages, needCommands: true } : { messages });
   };
 
   const ack = async (req: IncomingMessage, res: ServerResponse) => {
@@ -70,7 +77,8 @@ export function createMessageRoutes(registry: MessageRegistry): (req: IncomingMe
     if (path === '/api/mod/inbox/ack') return post(req, res, ack);
     if (path === '/api/codex/bridge/poll') return post(req, res, codexPoll);
     if (path === '/api/codex/bridge/ack') return post(req, res, codexAck);
-    const m = ITEM.exec(path);
+    const commands = COMMANDS.exec(path);
+    const m = commands ?? ITEM.exec(path);
     if (!m) return sendJson(res, 404, { error: tr('rota desconhecida') });
     const method = req.method ?? 'GET';
     if (method !== 'GET' && method !== 'HEAD') return methodNotAllowed(res, 'GET');
@@ -80,6 +88,7 @@ export function createMessageRoutes(registry: MessageRegistry): (req: IncomingMe
     } catch {
       return sendJson(res, 400, { error: tr('id inválido') });
     }
+    if (commands) return sendJson(res, 200, { commands: registry.commandsOf(id) });
     const msg = registry.get(id);
     if (msg) sendJson(res, 200, msg);
     else sendJson(res, 404, { error: tr('mensagem desconhecida: ela já foi resolvida há mais de 10 min ou o Habblaud reiniciou') });

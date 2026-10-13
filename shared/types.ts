@@ -720,3 +720,16 @@ export interface InboxMessage {
   /** O texto como foi digitado: o plugin o manda à sessão como se você o tivesse digitado. */
   text: string;
 }
+
+/**
+ * Comando de barra que uma sessão do Claude Code tem (o plugin habblaud-mensagens manda a lista junto da pergunta
+ * pela caixa de entrada; a página a busca em GET /api/messages/commands/:agentId para o menu da caixa de mensagem).
+ */
+export interface SessionCommand {
+  /** O nome, sem a barra. */
+  name: string;
+  /** Uma linha, mascarada e cortada; vazia quando o comando não tem descrição. */
+  description: string;
+  /** De onde vem: do Claude Code, de um plugin, um arquivo do usuário ou do projeto, ou um servidor MCP. */
+  source: 'builtin' | 'plugin' | 'user' | 'mcp';
+}

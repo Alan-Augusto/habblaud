@@ -7,6 +7,8 @@ import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
 import {
+  COMMAND_DESCRIPTION_MAX,
+  COMMANDS_MAX,
   ERR_GONE,
   ERR_NOT_CONFIRMED,
   ERR_NOT_FETCHED,
@@ -16,6 +18,7 @@ import {
   KEEP_MS,
   MAX_OPEN,
   MessageRegistry,
+  parseCommands,
   PRESENCE_MS,
   QUEUED_TIMEOUT_MS,
   SENT_TIMEOUT_MS,
@@ -309,6 +312,69 @@ describe('MessageRegistry: prazos e limpeza', () => {
     registry.tick();
     expect(registry.get(id)).toBeUndefined();
     expect(registry.size).toBe(0);
+  });
+});
+
+describe('MessageRegistry: comandos de barra da sessão', () => {
+  const LIST = [
+    { name: 'compact', description: 'Compacta a conversa', source: 'builtin' },
+    { name: 'revisar', description: 'Revisa o diff', source: 'user' },
+  ];
+
+  it('guarda a lista que a sessão manda e a devolve pelo agente; sem lista, pede (lacksCommands)', () => {
+    const { registry } = setup();
+    const round = { session: SESSION, account: 'acc' };
+    expect(registry.commandsOf(MAIN)).toEqual([]);
+    registry.inbox(round);
+    expect(registry.lacksCommands(round)).toBe(true);
+    registry.inbox({ ...round, commands: LIST });
+    expect(registry.lacksCommands(round)).toBe(false);
+    expect(registry.commandsOf(MAIN)).toEqual(LIST);
+    expect(registry.commandsOf(OTHER)).toEqual([]);
+    // Uma lista nova substitui a anterior (um plugin saiu, um servidor MCP entrou).
+    registry.inbox({ ...round, commands: [LIST[0]] });
+    expect(registry.commandsOf(MAIN)).toEqual([LIST[0]]);
+    // Sessão desconhecida ou corpo sem sessão: nada a pedir.
+    expect(registry.lacksCommands({ session: 'nao-existe' })).toBe(false);
+    expect(registry.lacksCommands({})).toBe(false);
+  });
+
+  it('a lista some com a presença da sessão e não vale para outra conversa do mesmo agente', () => {
+    const { registry, office, clock } = setup();
+    const round = { session: SESSION, account: 'acc' };
+    registry.inbox({ ...round, commands: LIST });
+    // /clear: o agente é o mesmo, a conversa é outra, e a lista é da anterior.
+    office.switchSession(MAIN, 'sess-nova');
+    expect(registry.commandsOf(MAIN)).toEqual([]);
+    expect(registry.lacksCommands({ session: 'sess-nova', account: 'acc' })).toBe(true);
+    registry.inbox({ session: 'sess-nova', account: 'acc', commands: LIST });
+    expect(registry.commandsOf(MAIN)).toEqual(LIST);
+    clock.advance(PRESENCE_MS);
+    registry.tick();
+    expect(registry.commandsOf(MAIN)).toEqual([]);
+  });
+
+  it('parseCommands: tira o que está fora do formato, repetidos e a barra; descrição numa linha, mascarada e cortada', () => {
+    const token = `sk-ant-api03-${'a'.repeat(40)}`;
+    const parsed = parseCommands([
+      { name: '/model', description: 'Troca o modelo\nda sessão', source: 'builtin' },
+      { name: 'model', description: 'repetido', source: 'builtin' },
+      { name: 'plugin:cmd', source: 'esquisita' },
+      { name: 'com espaço', description: 'x', source: 'user' },
+      { name: '', description: 'x', source: 'user' },
+      { name: 'x'.repeat(101), description: 'x', source: 'user' },
+      { name: 'chave', description: `usa ${token}`, source: 'mcp' },
+      { name: 'longo', description: 'd'.repeat(COMMAND_DESCRIPTION_MAX * 2), source: 'user' },
+      'texto',
+      null,
+    ]);
+    expect(parsed.map((c) => c.name)).toEqual(['model', 'plugin:cmd', 'chave', 'longo']);
+    expect(parsed[0]).toEqual({ name: 'model', description: 'Troca o modelo da sessão', source: 'builtin' });
+    expect(parsed[1]).toEqual({ name: 'plugin:cmd', description: '', source: 'builtin' });
+    expect(parsed[2].description).not.toContain(token);
+    expect(parsed[3].description.length).toBeLessThanOrEqual(COMMAND_DESCRIPTION_MAX);
+    expect(parseCommands('nada')).toEqual([]);
+    expect(parseCommands(Array.from({ length: COMMANDS_MAX + 10 }, (_, i) => ({ name: `c${i}` })))).toHaveLength(COMMANDS_MAX);
   });
 });
 

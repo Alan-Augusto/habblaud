@@ -2,10 +2,27 @@
 // mod/habblaud-mensagens (sem sessão, sem login, sem rede). Os stubs respondem no lugar do Claude Code e do
 // Habblaud: env, relógio (mock.clock), $.session.id, $.session.surfaces, $.http.fetch (as duas rotas do
 // servidor), o prompt.submit de baixo (a sessão: aceita, um hook recusa, a chamada lança ou fica presa) e o
-// command.run de baixo (o comando roda, não existe ou fica na fila da sessão ocupada).
+// command.run de baixo (o comando roda, não existe ou fica na fila da sessão ocupada) e, nos testes da lista de
+// comandos, o command.list de baixo.
 import type { HttpResponse, On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
-import { accountIdOf, ackBody, configDirOf, inboxBody, MAX_REASON, normalizePath, parseCommand, parseInbox, portOf, reasonText, type InboxMessage } from '../hooks/register'
+import {
+  accountIdOf,
+  ackBody,
+  commandRows,
+  configDirOf,
+  inboxBody,
+  MAX_COMMANDS,
+  MAX_DESCRIPTION,
+  MAX_REASON,
+  normalizePath,
+  parseCommand,
+  parseInbox,
+  portOf,
+  reasonText,
+  wantsCommands,
+  type InboxMessage,
+} from '../hooks/register'
 
 const NOW = Date.parse('2026-10-09T12:00:00Z')
 const PORT = '4850'
@@ -29,6 +46,10 @@ interface World {
   fate?: (text: string) => Fate
   /** O que a sessão faz com um comando de barra ('drop' não vale aqui). Padrão: 'ok'. */
   commandFate?: (command: string) => Exclude<Fate, 'drop'>
+  /** Os comandos de barra da sessão ('throw' = a leitura falha). Sem isto, não há stub: a leitura é rejeitada. */
+  commandList?: () => Array<{ name: string; description: string; source: 'builtin' | 'plugin' | 'user' | 'mcp'; plugin?: string }> | 'throw'
+  /** O Habblaud pede a lista de comandos na resposta da caixa de entrada. Padrão: não. */
+  needCommands?: () => boolean
 }
 
 interface Sent {
@@ -75,8 +96,17 @@ function world(on: On, w: World = {}) {
       await clock.sleep(60_000)
       return { deny: 'tarde demais' }
     }
-    return { value: Array.isArray(a) ? response(200, JSON.stringify({ messages: a })) : response(a.status, a.text) }
+    if (!Array.isArray(a)) return { value: response(a.status, a.text) }
+    return { value: response(200, JSON.stringify(w.needCommands?.() ? { messages: a, needCommands: true } : { messages: a })) }
   })
+  if (w.commandList) {
+    const list = w.commandList
+    on('command.list', () => {
+      const value = list()
+      if (value === 'throw') throw new Error('sem lista')
+      return { value }
+    })
+  }
   on('prompt.submit', async ($, e) => {
     submits.push({ text: e.text, origin: e.origin })
     const fate = w.fate ? w.fate(e.text) : 'ok'
@@ -312,7 +342,82 @@ describe('rodadas', () => {
   })
 })
 
+describe('lista de comandos de barra', () => {
+  const COMPACT = { name: 'compact', description: 'Compacta a conversa', source: 'builtin' } as const
+  const RESUMO = { name: 'habblaud', description: 'Resumo do escritório', source: 'plugin', plugin: 'habblaud' } as const
+  const withList = (w: ReturnType<typeof world>) => w.inboxes().filter((s) => (s.body as { commands?: unknown }).commands !== undefined)
+  const listOf = (s: Sent) => (s.body as { commands: unknown }).commands
+
+  test('vai na primeira pergunta e só volta a ir quando muda (relida a cada minuto)', async ($, on) => {
+    let list: Array<typeof COMPACT | typeof RESUMO> = [COMPACT]
+    const w = world(on, { commandList: () => list })
+    await $.session.start(START)
+    await w.clock.advance(2_000)
+    expect(w.inboxes().length).toBe(1)
+    expect(listOf(w.inboxes()[0]!)).toEqual([COMPACT])
+    list = [COMPACT, RESUMO]
+    await w.clock.advance(20_000)
+    expect(withList(w).length).toBe(1)
+    await w.clock.advance(60_000)
+    expect(withList(w).length).toBe(2)
+    // Só nome, descrição e origem: o plugin de cada comando não vai.
+    expect(listOf(withList(w)[1]!)).toEqual([COMPACT, { name: 'habblaud', description: 'Resumo do escritório', source: 'plugin' }])
+    await w.clock.advance(120_000)
+    expect(withList(w).length).toBe(2)
+  })
+
+  test('o Habblaud pede a lista (needCommands): vai de novo na pergunta seguinte, mesmo sem ter mudado', async ($, on) => {
+    let need = false
+    const w = world(on, { commandList: () => [COMPACT], needCommands: () => need })
+    await $.session.start(START)
+    await w.clock.advance(4_000)
+    expect(withList(w).length).toBe(1)
+    need = true
+    await w.clock.advance(2_000)
+    need = false
+    await w.clock.advance(4_000)
+    expect(withList(w).length).toBe(2)
+    expect(listOf(withList(w)[1]!)).toEqual([COMPACT])
+  })
+
+  test('a leitura da lista falha: a pergunta segue sem ela e as mensagens são entregues', async ($, on) => {
+    const w = world(on, { commandList: () => 'throw', inbox: batches([{ id: 'm1', text: 'oi' }]) })
+    await $.session.start(START)
+    await w.clock.advance(2_000)
+    expect(withList(w).length).toBe(0)
+    expect(w.texts()).toEqual(['oi'])
+    expect(w.acks().length).toBe(1)
+  })
+
+  test('o Habblaud fora do ar na hora da lista: ela vai quando ele voltar', async ($, on) => {
+    let up = false
+    const w = world(on, { commandList: () => [COMPACT], inbox: () => (up ? [] : 'offline') })
+    await $.session.start(START)
+    await w.clock.advance(2_000)
+    expect(withList(w).length).toBe(1)
+    up = true
+    await w.clock.advance(30_000)
+    expect(withList(w).length).toBe(2)
+    // Recebida: as perguntas seguintes vão sem ela.
+    await w.clock.advance(4_000)
+    expect(withList(w).length).toBe(2)
+    expect(w.inboxes().length).toBe(4)
+  })
+})
+
 describe('funções puras', () => {
+  test('lista de comandos: só nome, descrição cortada e origem; item sem nome fica de fora; a lista tem limite', () => {
+    expect(commandRows(undefined)).toEqual([])
+    expect(commandRows([{ name: 'a', description: 'x'.repeat(MAX_DESCRIPTION + 50), source: 'mcp', plugin: 'p' }, { name: '' }, null, 'b', { name: 'c' }])).toEqual([
+      { name: 'a', description: 'x'.repeat(MAX_DESCRIPTION), source: 'mcp' },
+      { name: 'c', description: '', source: 'builtin' },
+    ])
+    expect(commandRows(Array.from({ length: MAX_COMMANDS + 5 }, (_, i) => ({ name: `c${i}` }))).length).toBe(MAX_COMMANDS)
+    expect(wantsCommands('{"messages":[],"needCommands":true}')).toBe(true)
+    expect(wantsCommands('{"messages":[]}')).toBe(false)
+    expect(wantsCommands('<html>')).toBe(false)
+  })
+
   test('inbox: formato estranho = fora do ar; item sem id fica de fora; sem texto vira texto vazio', () => {
     expect(parseInbox('<html>')).toBeUndefined()
     expect(parseInbox('[]')).toBeUndefined()
@@ -327,6 +432,9 @@ describe('funções puras', () => {
   test('corpos das duas rotas', () => {
     expect(JSON.parse(inboxBody('s', '.claude'))).toEqual({ session: 's', account: '.claude' })
     expect(JSON.parse(inboxBody('s', undefined))).toEqual({ session: 's' })
+    const rows = [{ name: 'compact', description: 'Compacta', source: 'builtin' }]
+    expect(JSON.parse(inboxBody('s', '.claude', rows))).toEqual({ session: 's', account: '.claude', commands: rows })
+    expect(JSON.parse(inboxBody('s', undefined, []))).toEqual({ session: 's', commands: [] })
     expect(JSON.parse(ackBody('s', [{ id: 'a', ok: true }, { id: 'b', ok: false, error: 'não' }]))).toEqual({
       session: 's',
       results: [

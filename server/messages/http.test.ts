@@ -198,7 +198,7 @@ describe('rotas', () => {
     expect((await post(srv, '/api/mod/inbox/ack', { session: SESSION })).status).toBe(400);
 
     // Com o plugin: 5 na fila, a 6ª recebe 429.
-    expect((await post(srv, '/api/mod/inbox', { session: SESSION, account: 'acc' })).json).toEqual({ messages: [] });
+    expect((await post(srv, '/api/mod/inbox', { session: SESSION, account: 'acc' })).json).toEqual({ messages: [], needCommands: true });
     for (let i = 0; i < 5; i++) expect((await post(srv, '/api/messages', { agentId: MAIN, text: `m${i}` })).status).toBe(201);
     const full = await post(srv, '/api/messages', { agentId: MAIN, text: 'demais' });
     expect(full.status).toBe(429);
@@ -212,10 +212,30 @@ describe('rotas', () => {
     expect((await post(srv, '/api/mod/inbox/ack', { session: 'nao-existe', results: [{ id: 'x', ok: true }] })).json).toEqual({ ok: true });
   });
 
+  it('comandos de barra: a caixa de entrada pede a lista (needCommands), guarda a que o plugin manda e a página a busca', async () => {
+    srv = await serveMessages();
+    const path = `/api/messages/commands/${encodeURIComponent(MAIN)}`;
+    expect((await request(srv.base, path)).json).toEqual({ commands: [] });
+    expect((await post(srv, '/api/mod/inbox', { session: SESSION, account: 'acc' })).json).toEqual({ messages: [], needCommands: true });
+    const commands = [
+      { name: 'compact', description: 'Compacta a conversa', source: 'builtin' },
+      { name: 'habblaud', description: 'Resumo do escritório', source: 'plugin', plugin: 'habblaud' },
+    ];
+    expect((await post(srv, '/api/mod/inbox', { session: SESSION, account: 'acc', commands })).json).toEqual({ messages: [] });
+    expect((await request(srv.base, path)).json).toEqual({
+      commands: [
+        { name: 'compact', description: 'Compacta a conversa', source: 'builtin' },
+        { name: 'habblaud', description: 'Resumo do escritório', source: 'plugin' },
+      ],
+    });
+    expect((await request(srv.base, '/api/messages/commands/nao-existe')).json).toEqual({ commands: [] });
+    expect((await request(srv.base, path, { method: 'POST', body: {} })).status).toBe(405);
+  });
+
   it('fluxo: plugin conecta (canMessage) → página manda (201) → plugin busca → confirma → página consulta (delivered) e o feed mostra', async () => {
     srv = await serveMessages();
     expect((await snapshot(srv)).agents.find((a) => a.id === MAIN)?.canMessage).toBeUndefined();
-    expect((await post(srv, '/api/mod/inbox', { session: SESSION, account: 'acc' })).json).toEqual({ messages: [] });
+    expect((await post(srv, '/api/mod/inbox', { session: SESSION, account: 'acc' })).json).toEqual({ messages: [], needCommands: true });
     await sleep(30);
     expect((await snapshot(srv)).agents.find((a) => a.id === MAIN)?.canMessage).toBe(true);
 
