@@ -3923,6 +3923,42 @@
   }
 }
 
+/* Os cartões de uso não cabem na linha da barra (muitas contas ou janela estreita; ui/usage.ts decide): vão para uma
+   segunda linha, como já acontece no celular, e rolam na horizontal se ainda assim não couberem. */
+@media (min-width: 601px) {
+  .ui-root.has-usage-row {
+    --top-h: 124px;
+  }
+
+  .ui-root.has-usage-row .ui-topbar {
+    flex-wrap: wrap;
+    align-content: center;
+    row-gap: 6px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .ui-root.has-usage-row .ui-topbar__right {
+    margin-left: auto;
+  }
+
+  .ui-root.has-usage-row .ui-usage {
+    order: 10;
+    flex: 1 0 100%;
+    margin-left: 0;
+    padding: 3px 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  /* Sem ficar presa à rolagem da fila: a dica se ancora na barra (o backdrop-filter dela é o bloco de contenção). */
+  .ui-root.has-usage-row .ui-usage-tip {
+    position: fixed;
+    top: calc(var(--top-h) + 6px);
+    right: var(--gap);
+  }
+}
+
 @media (max-width: 1200px) {
   .ui-counter--agents,
   .ui-counter--working {
@@ -4102,6 +4138,9 @@
     order: 10;
     flex: 1 0 100%;
     margin-left: 0;
+    /* Com 4 ou mais contas os cartões mantêm o mínimo de 128 px e não cabem: a fila rola (a dica já é fixa aqui). */
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .ui-usage-card {
