@@ -2599,4 +2599,6 @@ export const EN: Readonly<Record<string, string>> = {
   "✓ 1 anexo de uma mensagem gravado": "✓ 1 attachment of a message saved",
   "✗ anexos de uma mensagem recusados: {0}": "✗ attachments of a message refused: {0}",
   "✗ lista de arquivos recusada: {0}": "✗ file list refused: {0}",
+  "No máximo {0} anexos por mensagem.": "At most {0} attachments per message.",
+  "Cole ou arraste imagens e arquivos para anexar.": "Paste or drag images and files to attach.",
 };

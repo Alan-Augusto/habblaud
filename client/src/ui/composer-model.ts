@@ -46,14 +46,44 @@ export function composerTip(provider: Provider = 'claude'): string {
     : tr('Entra na sessão como se você tivesse digitado. Enter manda; Shift+Enter quebra a linha.');
 }
 
+/** Dica dos anexos (gravados no computador da sessão; a mensagem leva os caminhos). */
+export const ATTACH_TIP = tr('Cole ou arraste imagens e arquivos para anexar.');
+
 /** O que sai da caixa: o texto como foi digitado, sem os espaços e linhas em branco do fim. */
 export function messageText(raw: string): string {
   return raw.replace(/\s+$/, '');
 }
 
-export function canSend(raw: string): boolean {
+/** Dá para mandar: há texto (ou, sem texto, ao menos um anexo) e ele cabe no limite. */
+export function canSend(raw: string, attachments = 0): boolean {
   const text = messageText(raw);
-  return text.trim().length > 0 && text.length <= MESSAGE_MAX;
+  return (text.trim().length > 0 || attachments > 0) && text.length <= MESSAGE_MAX;
+}
+
+/** Anexos por mensagem e o tamanho de cada um (os mesmos limites do servidor: spawn/attachments.ts). */
+export const MESSAGE_FILES_MAX = 5;
+export const MESSAGE_FILE_MAX_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Quais dos arquivos colados ou arrastados entram como anexos, com `have` já na caixa: os vazios e os grandes demais
+ * ficam de fora, e a lista para no limite por mensagem. `problem` diz o primeiro motivo de algum ter ficado de fora.
+ */
+export function acceptFiles<T extends { name: string; size: number }>(files: readonly T[], have: number): { accepted: T[]; problem?: string } {
+  const accepted: T[] = [];
+  let problem: string | undefined;
+  for (const f of files) {
+    if (!f.size) continue;
+    if (f.size > MESSAGE_FILE_MAX_BYTES) problem ??= tr('{0} passa de {1} MB.', [f.name, MESSAGE_FILE_MAX_BYTES / 1024 / 1024]);
+    else if (have + accepted.length >= MESSAGE_FILES_MAX) problem ??= tr('No máximo {0} anexos por mensagem.', [MESSAGE_FILES_MAX]);
+    else accepted.push(f);
+  }
+  return problem ? { accepted, problem } : { accepted };
+}
+
+/** Rótulo de um anexo que não é imagem, no lugar da miniatura: a extensão (até 4 letras) ou "ARQ". */
+export function fileBadge(name: string): string {
+  const dot = name.lastIndexOf('.');
+  return (dot > 0 ? name.slice(dot + 1) : '').slice(0, 4).toUpperCase() || tr('ARQ');
 }
 
 /** Enter manda; Shift+Enter (e Alt+Enter) quebram a linha; Enter compondo um acento (IME) não conta. */

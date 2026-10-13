@@ -561,6 +561,11 @@ e espera o próximo pedido, dar uma instrução nova ou corrigir o rumo, sem pro
   texto (o Claude Code não anexa o arquivo citado numa mensagem vinda de um plugin) e o agente o abre pelo caminho. A lista segue
   o `.gitignore` e nunca mostra arquivos de ambiente, chaves ou pastas de credenciais; só os nomes saem do computador
   para a página. No Docker, quem lista é o auxiliar do host: deixe o `npm run codex:bridge` rodando.
+- **Anexos:** cole (`Ctrl`/`⌘`+`V`) ou arraste imagens e arquivos para a caixa. Eles aparecem em cima dela, com
+  miniatura, e vão com a mensagem: até 5 por mensagem, 15 MB cada, e dá para mandar só os anexos, sem texto. Os
+  arquivos são gravados no computador, em `~/.habblaud/attachments/`, e a mensagem leva os caminhos para o agente ler.
+  As pastas de anexos com mais de uma semana são apagadas quando chegam anexos novos. No Docker, quem grava é o
+  auxiliar do host (`npm run codex:bridge`).
 - A caixa mostra a situação: **na fila** (a sessão busca as mensagens a cada 2 segundos), **entregue** ou **não
   entregue**, com o motivo. Com o agente ocupado, a mensagem espera e entra quando ele terminar o turno, como um
   prompt digitado com o agente trabalhando.

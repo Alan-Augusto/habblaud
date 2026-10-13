@@ -30,6 +30,10 @@ do meio (0.**3**.0).
   `.gitignore` (fora de um repositório git, uma caminhada curta pela pasta) e nunca mostra arquivos de ambiente,
   chaves ou pastas de credenciais. No Docker, quem lista é o auxiliar do host (`npm run codex:bridge`), que precisa
   ser reiniciado depois desta atualização.
+- **Anexos na caixa de mensagem:** cole (`Ctrl`/`⌘`+`V`) ou arraste imagens e arquivos para a caixa; eles aparecem em
+  cima dela, com miniatura, e vão com a mensagem (até 5, 15 MB cada; dá para mandar só os anexos). São gravados em
+  `~/.habblaud/attachments/`, como os do Novo agente, e a mensagem leva os caminhos para o agente ler. As pastas de
+  anexos com mais de uma semana passam a ser apagadas quando chegam anexos novos de uma mensagem.
 
 ### Alterado
 

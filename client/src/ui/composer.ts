@@ -7,13 +7,17 @@
 // põe o texto ditado no cursor; aparece quando o ditado funciona daqui. Com `/` no começo, abre o menu de comandos de
 // barra da sessão do agente (a lista vem do plugin, por GET /api/messages/commands/:id): filtra ao digitar, setas
 // andam, Enter ou Tab completam e Esc fecha. Com `@`, o mesmo menu lista os arquivos do projeto do agente que casam
-// com o que vem depois (GET /api/messages/files/:id) e o escolhido entra como `@caminho`. A lógica pura está em
-// ui/composer-model.ts.
+// com o que vem depois (GET /api/messages/files/:id) e o escolhido entra como `@caminho`. Imagens e arquivos colados
+// (Ctrl/⌘+V) ou arrastados para a caixa viram anexos: aparecem em cima dela, com miniatura, e vão com a mensagem
+// (POST /api/messages/attachments, um por arquivo; o servidor os grava no computador da sessão e o texto leva os
+// caminhos). Cada agente tem os seus, como o rascunho. A lógica pura está em ui/composer-model.ts.
 import { MESSAGE_MAX } from '../../../shared/messages';
 import type { AgentInfo, OutboxMessage, Provider, SessionCommand } from '../../../shared/types';
 import {
+  acceptFiles,
   applyCommand,
   applyMention,
+  ATTACH_TIP,
   canSend,
   commandOptions,
   commandQuery,
@@ -22,6 +26,7 @@ import {
   composerMode,
   composerTip,
   enterSends,
+  fileBadge,
   FILE_SEARCH_CACHE,
   FILE_SEARCH_DELAY_MS,
   fileOptions,
@@ -43,7 +48,9 @@ import {
 } from './composer-model';
 import type { UiContext } from './context';
 import { DictationButton, dictationAvailable, insertDictation } from './dictation';
-import { h, setAttr, setHidden, setText, setTitle } from './dom';
+import { h, iconButton, setAttr, setHidden, setText, setTitle } from './dom';
+import { ICONS } from './icons';
+import { fileToBase64, formatBytes } from './spawn';
 import { access } from '../net/access';
 import { tr } from '../../../shared/i18n';
 
@@ -52,6 +59,13 @@ export type ComposerVariant = 'drawer' | 'terminal';
 export interface ComposerOptions {
   /** Esc dentro da caixa: para onde vai o foco (padrão: só sai da caixa). */
   onEscape?: () => void;
+}
+
+/** Um anexo esperando o envio: o arquivo, a miniatura (imagem) e a linha dele na lista. */
+interface PendingFile {
+  file: File;
+  url?: string;
+  el: HTMLElement;
 }
 
 export class MessageComposer {
@@ -95,6 +109,9 @@ export class MessageComposer {
   private fileHits = new Map<string, string[]>();
   private fileKey = '';
   private fileTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Anexos de cada agente, esperando o envio (como o rascunho), e a lista deles na tela. */
+  private attachments = new Map<string, PendingFile[]>();
+  private fileList: HTMLElement;
 
   constructor(
     private ctx: UiContext,
@@ -122,6 +139,14 @@ export class MessageComposer {
     this.box.addEventListener('keyup', () => this.syncMenu());
     this.box.addEventListener('click', () => this.syncMenu());
     this.box.addEventListener('keydown', (e) => this.onKey(e));
+    // Colar: imagem ou arquivo na área de transferência vira anexo (texto colado segue o caminho normal).
+    this.box.addEventListener('paste', (e) => {
+      const files = [...(e.clipboardData?.files ?? [])];
+      if (!files.length || this.mode.kind !== 'ready') return;
+      e.preventDefault();
+      this.addFiles(files);
+    });
+    this.fileList = h('ul', { class: 'ui-spawn__files ui-msg__files', attrs: { 'aria-label': tr('Anexos') } });
     this.menu = h('ul', { class: 'ui-msg__menu', role: 'listbox', hidden: true, attrs: { id: `ui-msg-menu-${variant}`, 'aria-label': tr('Comandos de barra') } });
     setAttr(this.box, 'aria-controls', this.menu.id);
     setAttr(this.box, 'aria-autocomplete', 'list');
@@ -159,7 +184,24 @@ export class MessageComposer {
     this.tip = term ? null : h('p', { class: 'ui-msg__tip', text: composerTip() });
     // O menu abre para cima, ancorado na linha da caixa.
     const anchor = h('div', { class: 'ui-msg__anchor' }, this.menu, this.row);
-    this.el = h('div', { class: `ui-msg ui-msg--${variant}` }, this.hint, anchor, this.dictStatus, this.status, this.tip);
+    this.el = h('div', { class: `ui-msg ui-msg--${variant}` }, this.hint, this.fileList, anchor, this.dictStatus, this.status, this.tip);
+    // Arrastar para a caixa: só arquivos (um texto arrastado segue o caminho normal do navegador).
+    const dragging = (e: DragEvent) => this.mode.kind === 'ready' && !!e.dataTransfer?.types.includes('Files');
+    this.el.addEventListener('dragover', (e) => {
+      if (!dragging(e)) return;
+      e.preventDefault();
+      this.el.classList.add('is-dragover');
+    });
+    this.el.addEventListener('dragleave', (e) => {
+      if (!this.el.contains(e.relatedTarget as Node | null)) this.el.classList.remove('is-dragover');
+    });
+    this.el.addEventListener('drop', (e) => {
+      this.el.classList.remove('is-dragover');
+      if (!dragging(e)) return;
+      e.preventDefault();
+      this.addFiles([...(e.dataTransfer?.files ?? [])]);
+      this.box.focus({ preventScroll: true });
+    });
   }
 
   /**
@@ -186,6 +228,7 @@ export class MessageComposer {
       this.shown = shown;
       this.agentId = key;
       this.box.value = ready ? (this.drafts.get(key) ?? '') : '';
+      this.fileList.replaceChildren(...(ready ? (this.attachments.get(key) ?? []).map((f) => f.el) : []));
       this.box.style.height = '';
       if (ready) requestAnimationFrame(() => this.resize());
     }
@@ -209,7 +252,7 @@ export class MessageComposer {
     setHidden(this.row, !term && !ready);
     if (this.tip) {
       setHidden(this.tip, !ready);
-      setText(this.tip, composerTip(this.provider));
+      setText(this.tip, `${composerTip(this.provider)} ${ATTACH_TIP}`);
     }
     setHidden(this.hint, term || mode.kind !== 'hint');
     setText(this.hint, mode.kind === 'hint' ? mode.text : '');
@@ -421,7 +464,38 @@ export class MessageComposer {
   }
 
   private syncButton(): void {
-    this.sendBtn.disabled = this.mode.kind !== 'ready' || !canSend(this.box.value) || this.states.get(this.agentId)?.phase === 'sending';
+    const files = this.attachments.get(this.agentId)?.length ?? 0;
+    this.sendBtn.disabled = this.mode.kind !== 'ready' || !canSend(this.box.value, files) || this.states.get(this.agentId)?.phase === 'sending';
+  }
+
+  /** Arquivos colados ou arrastados viram anexos do agente da caixa (os que cabem; o motivo dos outros aparece embaixo). */
+  private addFiles(files: File[]): void {
+    const key = this.agentId;
+    const list = this.attachments.get(key) ?? [];
+    const { accepted, problem } = acceptFiles(files, list.length);
+    for (const file of accepted) {
+      const url = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined;
+      const item: PendingFile = { file, url, el: h('li', { class: 'ui-spawn__file' }) };
+      const thumb = url
+        ? h('img', { class: 'ui-spawn__thumb', attrs: { src: url, alt: '' } })
+        : h('span', { class: 'ui-spawn__thumb ui-spawn__thumb--doc', attrs: { 'aria-hidden': 'true' }, text: fileBadge(file.name) });
+      const remove = iconButton(ICONS.close, tr('Tirar {0}', [file.name]), () => this.removeFile(key, item), 'ui-icon-btn--sm ui-spawn__file-x');
+      item.el.append(thumb, h('span', { class: 'ui-spawn__file-name', text: file.name, attrs: { title: file.name } }), h('span', { class: 'ui-spawn__file-size', text: formatBytes(file.size) }), remove);
+      list.push(item);
+      if (key === this.agentId) this.fileList.append(item.el);
+    }
+    if (list.length) this.attachments.set(key, list);
+    if (problem) this.sayDictation(problem, true);
+    this.syncButton();
+  }
+
+  private removeFile(key: string, item: PendingFile): void {
+    if (item.url) URL.revokeObjectURL(item.url);
+    item.el.remove();
+    const rest = (this.attachments.get(key) ?? []).filter((f) => f !== item);
+    if (rest.length) this.attachments.set(key, rest);
+    else this.attachments.delete(key);
+    if (key === this.agentId) this.syncButton();
   }
 
   /** Cresce com o texto até o limite do CSS (~6 linhas; depois rola). Escondida, mede quando aparecer. */
@@ -441,12 +515,24 @@ export class MessageComposer {
   private async send(): Promise<void> {
     const agentId = this.agentId;
     const raw = this.box.value;
-    if (this.mode.kind !== 'ready' || !canSend(raw) || this.states.get(agentId)?.phase === 'sending') return;
+    const files = [...(this.attachments.get(agentId) ?? [])];
+    if (this.mode.kind !== 'ready' || !canSend(raw, files.length) || this.states.get(agentId)?.phase === 'sending') return;
     this.providers.set(agentId, this.provider);
     this.setState(agentId, { phase: 'sending', at: Date.now() });
     let r: { message: OutboxMessage } | { error: string };
     try {
-      r = await this.ctx.store.sendMessage(agentId, messageText(raw));
+      // Os anexos vão antes, um por vez; a mensagem leva os ids. Um que falhe e nada é mandado.
+      const ids: string[] = [];
+      let failed: string | undefined;
+      for (const f of files) {
+        const up = await this.ctx.store.uploadMessageAttachment(f.file.name, f.file.type, await fileToBase64(f.file));
+        if ('error' in up) {
+          failed = `${f.file.name}: ${up.error}`;
+          break;
+        }
+        ids.push(up.id);
+      }
+      r = failed ? { error: failed } : await this.ctx.store.sendMessage(agentId, messageText(raw), ids);
     } catch {
       r = { error: OFFLINE_ERROR };
     }
@@ -455,7 +541,9 @@ export class MessageComposer {
       this.setState(agentId, { phase: 'rejected', error: r.error, at: Date.now() });
       return;
     }
-    // Na fila: a caixa esvazia (a não ser que você tenha continuado a escrever enquanto o envio ia).
+    // Na fila: os anexos mandados saem da caixa (os colados enquanto o envio ia ficam para a próxima).
+    for (const f of files) this.removeFile(agentId, f);
+    // E a caixa esvazia (a não ser que você tenha continuado a escrever enquanto o envio ia).
     if ((this.drafts.get(agentId) ?? '') === raw) {
       this.drafts.delete(agentId);
       if (this.agentId === agentId && this.box.value === raw) {

@@ -2615,4 +2615,6 @@ export const FR: Readonly<Record<string, string>> = {
   "✓ 1 anexo de uma mensagem gravado": "✓ 1 pièce jointe d'un message enregistrée",
   "✗ anexos de uma mensagem recusados: {0}": "✗ pièces jointes d'un message refusées : {0}",
   "✗ lista de arquivos recusada: {0}": "✗ liste de fichiers refusée : {0}",
+  "No máximo {0} anexos por mensagem.": "Au maximum {0} pièces jointes par message.",
+  "Cole ou arraste imagens e arquivos para anexar.": "Collez ou glissez des images et des fichiers pour les joindre.",
 };

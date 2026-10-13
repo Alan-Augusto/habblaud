@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentInfo, SessionCommand } from '../../../shared/types';
 import {
+  acceptFiles,
   applyCommand,
   applyMention,
   canSend,
   commandOptions,
   commandQuery,
   menuAction,
+  MESSAGE_FILE_MAX_BYTES,
+  MESSAGE_FILES_MAX,
   moveActive,
   CODEX_BRIDGE_HINT,
   CODEX_TIMEOUT_ERROR,
@@ -14,6 +17,7 @@ import {
   composerTip,
   DELIVERED_SHOW_MS,
   enterSends,
+  fileBadge,
   fileOptions,
   isSettled,
   mentionQuery,
@@ -247,5 +251,34 @@ describe('arquivos citados com @', () => {
     const [active] = fileOptions(['README.md']);
     expect(menuAction(key, 'read', active)).toBe('pick');
     expect(menuAction(key, 'README.md', active)).toBeUndefined();
+  });
+});
+
+describe('anexos colados ou arrastados', () => {
+  const f = (name: string, size = 10) => ({ name, size });
+
+  it('com anexo, dá para mandar sem texto; texto longo demais continua não indo', () => {
+    expect(canSend('', 0)).toBe(false);
+    expect(canSend('  \n', 1)).toBe(true);
+    expect(canSend('oi', 2)).toBe(true);
+    expect(canSend('x'.repeat(20_001), 1)).toBe(false);
+  });
+
+  it('entram os que cabem: vazio fica de fora em silêncio; grande demais e além do limite, com o motivo', () => {
+    expect(acceptFiles([f('a.png'), f('vazio.txt', 0)], 0)).toEqual({ accepted: [f('a.png')] });
+    const big = acceptFiles([f('video.mov', MESSAGE_FILE_MAX_BYTES + 1), f('b.png')], 0);
+    expect(big.accepted).toEqual([f('b.png')]);
+    expect(big.problem).toMatch(/video\.mov passa de 15 MB/);
+    const many = acceptFiles(Array.from({ length: 4 }, (_, i) => f(`n${i}.png`)), MESSAGE_FILES_MAX - 2);
+    expect(many.accepted.map((x) => x.name)).toEqual(['n0.png', 'n1.png']);
+    expect(many.problem).toMatch(/No máximo 5 anexos/);
+    expect(acceptFiles([f('x.png')], MESSAGE_FILES_MAX)).toMatchObject({ accepted: [] });
+  });
+
+  it('sem miniatura, o rótulo é a extensão', () => {
+    expect(fileBadge('relatório.pdf')).toBe('PDF');
+    expect(fileBadge('pacote.tar.gzip2')).toBe('GZIP');
+    expect(fileBadge('Makefile')).toBe('ARQ');
+    expect(fileBadge('.gitignore')).toBe('ARQ');
   });
 });

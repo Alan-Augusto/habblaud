@@ -593,6 +593,11 @@ ventana correcta.
   lo abre por la ruta. La lista respeta el `.gitignore` y nunca muestra archivos de entorno, claves ni carpetas de credenciales;
   solo los nombres salen del ordenador hacia la página. En Docker lista el auxiliar del host: deja
   `npm run codex:bridge` en marcha.
+- **Adjuntos:** pega (`Ctrl`/`⌘`+`V`) o arrastra imágenes y archivos al cuadro. Aparecen encima de él, con
+  miniatura, y van con el mensaje: hasta 5 por mensaje, 15 MB cada uno, y se pueden enviar solo los adjuntos, sin
+  texto. Los archivos se guardan en el ordenador, en `~/.habblaud/attachments/`, y el mensaje lleva las rutas para que
+  el agente los lea. Las carpetas de adjuntos con más de una semana se borran cuando llegan adjuntos nuevos. En
+  Docker los guarda el auxiliar del host (`npm run codex:bridge`).
 - El cuadro muestra el estado: **en cola** (la sesión busca los mensajes cada 2 segundos), **entregado** o **no se
   entregó**, con el motivo. Con el agente ocupado, el mensaje espera y entra cuando termine su turno, como un prompt
   escrito con el agente trabajando.

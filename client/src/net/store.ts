@@ -313,9 +313,10 @@ export class OfficeStore {
    * (agente que não recebe mensagens, fila cheia, acesso que não é local...). Sem conexão com o servidor: lança.
    * No ?mock=1 a entrega é fictícia (o simulador põe a atividade no agente).
    */
-  async sendMessage(agentId: string, text: string): Promise<{ message: OutboxMessage } | { error: string }> {
+  async sendMessage(agentId: string, text: string, attachments: readonly string[] = []): Promise<{ message: OutboxMessage } | { error: string }> {
     if (this.mock) return this.mockSend(agentId, text);
-    const res = await fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agentId, text }) });
+    const body0 = JSON.stringify({ agentId, text, ...(attachments.length ? { attachments } : {}) });
+    const res = await fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body0 });
     let body: unknown;
     try {
       body = await res.json();
@@ -338,6 +339,25 @@ export class OfficeStore {
     if (!res.ok) throw new Error(tr('erro {0}', [res.status]));
     const list = ((await res.json()) as { commands?: unknown }).commands;
     return Array.isArray(list) ? (list as SessionCommand[]) : [];
+  }
+
+  /**
+   * Manda um anexo da próxima mensagem (POST /api/messages/attachments): `data` é o arquivo em base64. Devolve o id
+   * que a mensagem leva, ou o motivo da recusa. No ?mock=1 nada sai da página. Sem conexão: lança.
+   */
+  async uploadMessageAttachment(name: string, type: string, data: string): Promise<{ id: string } | { error: string }> {
+    if (this.mock) return { id: `mock-anexo-${++this.mockSeq}` };
+    const res = await fetch('/api/messages/attachments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, type, data }) });
+    let body: unknown;
+    try {
+      body = await res.json();
+    } catch {
+      // Resposta sem JSON (ex.: guard): usa a mensagem padrão.
+    }
+    const id = (body as { id?: unknown } | undefined)?.id;
+    if (res.status === 201 && typeof id === 'string') return { id };
+    const error = (body as { error?: unknown } | undefined)?.error;
+    return { error: typeof error === 'string' ? error : tr('erro {0}', [res.status]) };
   }
 
   /**

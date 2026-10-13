@@ -5297,6 +5297,16 @@ button.ui-term__think:hover,
   color: var(--ui-faint);
 }
 
+/* Anexos da mensagem (colados ou arrastados): a lista em cima da caixa, com os mesmos itens do Novo agente. */
+.ui-msg__files {
+  margin: 0 0 6px;
+}
+
+.ui-msg.is-dragover .ui-msg__row {
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 2px var(--ui-accent-soft);
+}
+
 .ui-msg__hint,
 .ui-msg__tip {
   font-size: 11.5px;

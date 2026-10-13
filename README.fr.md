@@ -593,6 +593,12 @@ son tour et attend la demande suivante, donner une nouvelle instruction ou corri
   plugin) et l'agent l'ouvre par son chemin. La liste respecte le `.gitignore` et n'affiche jamais les fichiers d'environnement, les clés ni
   les dossiers d'identifiants ; seuls les noms quittent l'ordinateur vers la page. Sous Docker, c'est l'auxiliaire de
   l'hôte qui liste : laissez `npm run codex:bridge` tourner.
+- **Pièces jointes :** collez (`Ctrl`/`⌘`+`V`) ou glissez des images et des fichiers sur la zone. Ils apparaissent
+  au-dessus, avec une miniature, et partent avec le message : jusqu'à 5 par message, 15 Mo chacun, et l'on peut
+  envoyer les pièces jointes seules, sans texte. Les fichiers sont enregistrés sur l'ordinateur, dans
+  `~/.habblaud/attachments/`, et le message porte les chemins pour que l'agent les lise. Les dossiers de pièces
+  jointes de plus d'une semaine sont supprimés à l'arrivée de nouvelles pièces jointes. Sous Docker, c'est
+  l'auxiliaire de l'hôte (`npm run codex:bridge`) qui enregistre.
 - La zone indique l'état : **en file** (la session récupère les messages toutes les 2 secondes), **remis** ou **non
   remis**, avec la raison. Si l'agent est occupé, le message attend et entre quand il finit son tour, comme un
   prompt tapé pendant que l'agent travaille.
