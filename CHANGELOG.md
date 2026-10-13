@@ -19,6 +19,8 @@ do meio (0.**3**.0).
   pedido esperando atrás dele.
 - "Meu dia": o limite de 1.000 esperas por dia vale também quando todas estão abertas (antes a lista e o arquivo do
   dia cresciam sem teto).
+- Um arquivo de conversa reescrito no mesmo lugar (em vez de só crescer) volta a ser lido do começo; antes o
+  conteúdo novo era ignorado ou lido a partir do meio.
 
 ## [0.10.0] - 2026-10-13
 
