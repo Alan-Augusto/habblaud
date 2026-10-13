@@ -23,3 +23,21 @@ describe('comandos de barra', () => {
     expect(panelCommandReason('abre o /usage')).toBeUndefined();
   });
 });
+describe('panelCommandReason: origem do comando', () => {
+  it('só os nativos do Claude Code são barrados: um comando de plugin, do usuário ou de MCP com o mesmo nome passa', () => {
+    expect(panelCommandReason('/status', 'builtin')).toBeDefined();
+    expect(panelCommandReason('/status')).toBeDefined();
+    for (const source of ['plugin', 'user', 'mcp'] as const) {
+      expect(panelCommandReason('/status', source)).toBeUndefined();
+      expect(panelCommandReason('/model', source)).toBeUndefined();
+    }
+  });
+
+  it('painéis da lista revisada: assistentes de configuração e de conta; os de texto passam', () => {
+    for (const cmd of ['/usage-credits', '/remote-control', '/mobile', '/install-github-app', '/upgrade', '/sandbox']) expect(panelCommandReason(cmd)).toBeDefined();
+    expect(panelCommandReason('/effort')).toBeDefined();
+    expect(panelCommandReason('/effort high')).toBeUndefined();
+    // /doctor e /agents deixaram de ser painéis; /compact, /context e /recap respondem com texto.
+    for (const cmd of ['/doctor', '/agents', '/compact', '/context', '/recap', '/init']) expect(panelCommandReason(cmd)).toBeUndefined();
+  });
+});

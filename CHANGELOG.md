@@ -18,7 +18,8 @@ do meio (0.**3**.0).
   como não entregue, com o motivo. Sessões abertas pegam a mudança com `/reload-plugins`.
 - Comandos que abrem um painel no terminal da sessão (`/usage`, `/config`, `/help`, `/model` sem argumento…) não são
   mandados pela caixa: ela avisa por quê e o texto fica nela, em vez de deixar um painel aberto num terminal que
-  ninguém está olhando.
+  ninguém está olhando. A lista desses comandos foi revisada com os comandos nativos do Claude Code 2.1.296, e só os
+  nativos são barrados: um comando de plugin, seu ou de um servidor MCP com o mesmo nome passa.
 - **Menu de comandos na caixa de mensagem (Claude Code):** digite `/` no começo e a caixa lista os comandos que a
   sessão do agente tem (os do Claude Code, os de plugins, os seus e os de servidores MCP), com a descrição. Filtra
   enquanto você digita; as setas andam, `Enter` ou `Tab` completam e `Esc` fecha. Os que abrem um painel vêm marcados

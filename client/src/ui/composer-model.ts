@@ -95,7 +95,7 @@ export function commandOptions(list: readonly SessionCommand[], query: string): 
     const name = fold(c.name);
     const rank = !q || name.startsWith(q) || name.slice(name.lastIndexOf(':') + 1).startsWith(q) ? 0 : name.includes(q) ? 1 : q.length >= DESCRIPTION_QUERY_MIN && fold(c.description).includes(q) ? 2 : -1;
     if (rank < 0) continue;
-    groups[rank].push({ name: c.name, description: c.description, panel: panelCommandReason(`/${c.name} x`) !== undefined });
+    groups[rank].push({ name: c.name, description: c.description, panel: panelCommandReason(`/${c.name} x`, c.source) !== undefined });
   }
   return groups.flat();
 }

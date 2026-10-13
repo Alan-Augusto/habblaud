@@ -2,6 +2,7 @@
 // Código puro: sem APIs de Node nem de DOM.
 import { maskSecrets, truncate, type ActivityDescription } from './activity';
 import { tr } from './i18n';
+import type { SessionCommand } from './types';
 
 /** Tamanho máximo de uma mensagem (caracteres). */
 export const MESSAGE_MAX = 20_000;
@@ -40,41 +41,63 @@ export function slashCommandOf(text: string): SlashCommand | undefined {
 // diálogo). O plugin só recebe a saída em texto de um comando: mandado pelo escritório, o painel ficaria aberto num
 // terminal que ninguém está olhando, até alguém fechá-lo lá. A lista é do que o Claude Code traz de fábrica; um
 // comando de painel que ela não conhece passa (e abre no terminal).
-/** Sempre abrem um painel. */
+/**
+ * Sempre abrem um painel (um menu, um seletor, um assistente de configuração ou de login). Revisada com a lista de
+ * comandos nativos do Claude Code 2.1.296, pelo que cada descrição diz: a API diz o nome, a descrição e a origem de
+ * cada comando, mas não se ele desenha um painel. Os nomes antigos (settings, allowed-tools, checkpoint) ficam.
+ */
 const PANEL_ALWAYS = new Set([
-  'agents',
+  'artifacts',
+  'bug',
+  'checkpoint',
+  'chrome',
   'config',
   'settings',
-  'doctor',
+  'extra-usage',
   'feedback',
-  'bug',
   'help',
   'hooks',
   'ide',
+  'install-github-app',
+  'install-slack-app',
   'login',
   'logout',
   'memory',
+  'mobile',
+  'passes',
   'permissions',
   'allowed-tools',
+  'powerup',
   'privacy-settings',
+  'pro-trial-expired',
+  'rate-limit-options',
+  'remote-control',
+  'remote-env',
   'rewind',
-  'checkpoint',
+  'sandbox',
+  'setup-bedrock',
+  'setup-vertex',
   'skills',
   'status',
   'tasks',
   'theme',
+  'upgrade',
   'usage',
+  'usage-credits',
+  'web-setup',
 ]);
 /** Abrem um painel só sem argumentos (`/model` abre o seletor; `/model opus` troca direto). */
-const PANEL_WITHOUT_ARGS = new Set(['add-dir', 'export', 'mcp', 'model', 'output-style', 'plugin', 'resume', 'continue']);
+const PANEL_WITHOUT_ARGS = new Set(['add-dir', 'effort', 'export', 'mcp', 'model', 'output-style', 'plugin', 'resume', 'continue']);
 
 /**
  * Por que este comando de barra não vai pelo escritório (undefined = vai): ele abriria um painel no terminal da
- * sessão. Texto comum e comandos que respondem com texto (ou que a lista não conhece) passam.
+ * sessão. Texto comum e comandos que respondem com texto (ou que a lista não conhece) passam. `source` é a origem do
+ * comando na sessão, quando se sabe (a lista que o plugin manda): só os nativos do Claude Code abrem esses painéis, e
+ * um comando de plugin, do usuário ou de um servidor MCP com o mesmo nome passa.
  */
-export function panelCommandReason(text: string): string | undefined {
+export function panelCommandReason(text: string, source?: SessionCommand['source']): string | undefined {
   const slash = slashCommandOf(text);
-  if (!slash) return undefined;
+  if (!slash || (source !== undefined && source !== 'builtin')) return undefined;
   const name = slash.command.toLowerCase();
   if (PANEL_ALWAYS.has(name)) return tr('/{0} abre um painel no terminal da sessão, que o escritório não mostra: rode esse comando no Claude Code', [name]);
   if (PANEL_WITHOUT_ARGS.has(name) && !slash.args) {

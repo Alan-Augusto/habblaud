@@ -19,7 +19,7 @@
 // o auxiliar visto há até PRESENCE_MS). `delivered` = entrou na fila da sessão (entra quando ela ficar ociosa).
 import { randomBytes } from 'node:crypto';
 import { maskSecrets, truncate } from '../../shared/activity';
-import { describeMessage, MESSAGE_MAX, panelCommandReason } from '../../shared/messages';
+import { describeMessage, MESSAGE_MAX, panelCommandReason, slashCommandOf } from '../../shared/messages';
 import type { Activity, AgentInfo, InboxMessage, OutboxMessage, SessionCommand } from '../../shared/types';
 import { errMsg, log } from '../log';
 import type { CodexQueueResult, CodexQueueRunner } from './codex';
@@ -296,7 +296,7 @@ export class MessageRegistry {
     if (reason) return { error: 'unavailable', reason };
     // Comando de painel do Claude Code: abriria um menu no terminal da sessão, longe de quem mandou (o texto fica na
     // caixa). No Codex não há comandos de barra por aqui: o texto vai como mensagem comum.
-    const panel = agent.provider === 'codex' ? undefined : panelCommandReason(text);
+    const panel = agent.provider === 'codex' ? undefined : panelCommandReason(text, this.commandSource(agentId, text));
     if (panel) return { error: 'unavailable', reason: panel };
     let open = 0;
     for (const e of this.messages.values()) if (e.msg.agentId === agentId && !isFinal(e)) open++;
@@ -486,6 +486,12 @@ export class MessageRegistry {
     return this.opts.office
       .list()
       .find((a) => a.kind === 'main' && a.provider !== 'codex' && a.sessionId === session && (!account || a.account === account) && present(a));
+  }
+
+  /** De onde vem o comando de barra de `text` na sessão do agente; sem a lista dela (ou sem o comando nela), undefined. */
+  private commandSource(agentId: string, text: string): SessionCommand['source'] | undefined {
+    const name = slashCommandOf(text)?.command;
+    return name ? this.commandsOf(agentId).find((c) => c.name === name)?.source : undefined;
   }
 
   private bridgeRecent(): boolean {

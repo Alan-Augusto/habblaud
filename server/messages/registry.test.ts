@@ -378,6 +378,19 @@ describe('MessageRegistry: comandos de barra da sessão', () => {
   });
 });
 
+describe('MessageRegistry: comando de painel e a origem dele na sessão', () => {
+  it('com a lista da sessão, um comando de plugin com nome de painel passa; o nativo continua barrado', () => {
+    const { registry } = setup();
+    const round = { session: SESSION, account: 'acc' };
+    registry.inbox(round);
+    // Sem a lista: vale o nome.
+    expect(registry.send({ agentId: MAIN, text: '/status' })).toMatchObject({ error: 'unavailable' });
+    registry.inbox({ ...round, commands: [{ name: 'status', description: 'Situação do deploy', source: 'plugin' }, { name: 'usage', description: 'Uso do plano', source: 'builtin' }] });
+    sent(registry.send({ agentId: MAIN, text: '/status' }));
+    expect(registry.send({ agentId: MAIN, text: '/usage' })).toMatchObject({ error: 'unavailable', reason: expect.stringMatching(/painel/) });
+  });
+});
+
 describe('MessageRegistry: demo', () => {
   it('agente do demo: entrega fictícia em ~1 s com a atividade no agente; nunca sai pela caixa de entrada', () => {
     const { office, registry, clock } = setup();
