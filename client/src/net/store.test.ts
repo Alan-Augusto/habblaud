@@ -324,3 +324,14 @@ describe('personagem do projeto (store)', () => {
     expect(fetchMock.mock.calls.length).toBe(calls);
   });
 });
+
+describe('caixa de mensagem no modo demonstração', () => {
+  it('comandos de barra: uma lista fictícia, e cada chamada devolve uma cópia', async () => {
+    const store = new OfficeStore({ mock: true });
+    const list = await store.sessionCommands('qualquer');
+    expect(list.map((c) => c.name)).toEqual(expect.arrayContaining(['compact', 'model', 'usage', 'habblaud']));
+    list[0].name = 'mudou';
+    expect((await store.sessionCommands('qualquer'))[0].name).not.toBe('mudou');
+  });
+});
+

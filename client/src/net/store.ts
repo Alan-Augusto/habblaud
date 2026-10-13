@@ -6,6 +6,7 @@
 // ex.: servidor reiniciando atrás de um proxy), tenta de novo com espera crescente.
 import type { AppearanceParts } from '../../../shared/appearance';
 import type { Activity, AgentDetail, AgentInfo, FeedItem, Notice, OfficeSnapshot, OutboxMessage, PermissionDecision, PermissionRequestInfo, RoomInfo, SessionCommand } from '../../../shared/types';
+import { DEMO_COMMANDS } from '../../../shared/demo/composer';
 import { DemoSimulator } from '../../../shared/demo/simulator';
 import { tr } from '../../../shared/i18n';
 
@@ -327,11 +328,11 @@ export class OfficeStore {
 
   /**
    * Comandos de barra da sessão do agente (GET /api/messages/commands/:id), para o menu da caixa de mensagem. Vazia =
-   * a sessão ainda não mandou a lista (ou o agente não é do Claude Code). No ?mock=1 não há sessão: vazia. Sem
-   * conexão: lança.
+   * a sessão ainda não mandou a lista (ou o agente não é do Claude Code). No ?mock=1 não há sessão: uma lista
+   * fictícia (shared/demo/composer.ts) para os agentes do Claude Code. Sem conexão: lança.
    */
   async sessionCommands(agentId: string): Promise<SessionCommand[]> {
-    if (this.mock) return [];
+    if (this.mock) return this.agent(agentId)?.provider === 'codex' ? [] : DEMO_COMMANDS.map((c) => ({ ...c }));
     const res = await fetch(`/api/messages/commands/${encodeURIComponent(agentId)}`);
     if (!res.ok) throw new Error(tr('erro {0}', [res.status]));
     const list = ((await res.json()) as { commands?: unknown }).commands;
