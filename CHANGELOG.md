@@ -43,6 +43,7 @@ do meio (0.**3**.0).
 - No timelapse, os tempos dos painéis acompanham a reprodução e ficam parados ao pausar, junto com o escritório e o selo do replay.
 - O feed pausado guarda só os 50 eventos mais recentes e libera os dados de sessões antigas, mantendo a contagem de novidades.
 - No timelapse, as setas no controle de velocidade passam a trocar a velocidade, em vez de mover a câmera do escritório.
+- O escritório evita conexões ao vivo duplicadas e libera os recursos de rede e fontes ao ser fechado.
 
 ## [0.8.0] - 2026-10-09
 
