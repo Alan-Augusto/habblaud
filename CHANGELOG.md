@@ -10,6 +10,12 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Adicionado
+
+- Temas Natal e Halloween em Configurações → Aparência, com decoração em pixel art,
+  iluminação, tapetes e acessórios nos personagens. A escolha fica salva no navegador;
+  Automático mantém o escritório original, sem mudança por calendário.
+
 ## [0.9.0] - 2026-10-13
 
 Para atualizar: `git pull` e `npm run docker:up`. O terminal interativo vem desligado e só funciona fora do Docker:
