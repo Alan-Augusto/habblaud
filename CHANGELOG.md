@@ -17,6 +17,8 @@ do meio (0.**3**.0).
   cobrir os botões da direita (zoom, Meu dia, Configurações, Ajuda).
 - Dois pedidos de permissão do mesmo agente no mesmo instante: o detalhe do mais novo não diz mais que há outro
   pedido esperando atrás dele.
+- "Meu dia": o limite de 1.000 esperas por dia vale também quando todas estão abertas (antes a lista e o arquivo do
+  dia cresciam sem teto).
 
 ## [0.10.0] - 2026-10-13
 
