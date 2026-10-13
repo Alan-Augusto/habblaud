@@ -9,9 +9,10 @@
 //
 // Segurança: quem controla um terminal destes executa comandos na máquina. O recurso é opt-in (HABBLAUD_PTY=1),
 // as rotas só aceitam conexões do próprio computador (ver http/pty.ts) e ele fica desligado no Docker.
-import { readFileSync, statSync } from 'node:fs';
+import { accessSync, chmodSync, constants, readFileSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { isAbsolute, join, resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import type { PtyInfo, PtyStatus } from '../../shared/types';
 import { frame } from '../http/sse';
 import { errMsg, log } from '../log';
@@ -283,8 +284,15 @@ export class PtyManager {
         throw new PtyError(500, 'a sessão no outro terminal não encerrou nem à força; ela continua aberta lá');
       }
     }
+    let info: PtyInfo;
+    try {
+      info = this.spawn(plan, { resume: agent.sessionId, from: agentId });
+    } catch (err) {
+      // A sessão de lá já foi encerrada: dizer como continuar a conversa.
+      throw new PtyError(500, `a sessão foi encerrada no outro terminal, mas não abriu aqui (${errMsg(err)}); para continuar: claude --resume ${agent.sessionId}`);
+    }
     log.info(`Agente ${agentId} assumido pelo escritório (sessão ${agent.sessionId}).`);
-    return this.spawn(plan, { resume: agent.sessionId, from: agentId });
+    return info;
   }
 
   /** Conecta um cliente SSE: a tela atual primeiro, depois a saída ao vivo. */
@@ -360,6 +368,9 @@ export class PtyManager {
   /** Valida o pedido de uma sessão nova (`reserved`: vagas já prometidas a tomadas em andamento). */
   private plan(p: { cwd: unknown; account?: unknown; cols?: unknown; rows?: unknown }, reserved = 0): SpawnPlan {
     if (!this.opts.spawn) throw new PtyError(503, `terminal desligado: ${this.opts.disabledReason ?? 'indisponível'}`);
+    // Antes de tudo (o "assumir" encerra a sessão de lá depois daqui): um claude que não roda abriria um terminal que
+    // sai na hora.
+    if (!isExecutableFile(this.opts.claudeBin)) throw new PtyError(503, `o executável do Claude Code não roda: ${this.opts.claudeBin} (confira o HABBLAUD_CLAUDE_BIN)`);
     if (typeof p.cwd !== 'string' || !isAbsolute(p.cwd)) throw new PtyError(400, 'informe a pasta do projeto (caminho absoluto)');
     const cwd = resolve(p.cwd);
     let isDir = false;
@@ -511,37 +522,115 @@ function clampInt(v: unknown, min: number, max: number, fallback: number): numbe
   return Math.min(max, Math.max(min, n));
 }
 
-/** Carrega o node-pty (dependência opcional). Devolve null + motivo se não der. */
+/**
+ * Carrega o node-pty (dependência opcional) e confere que ele abre um terminal. Devolve null + motivo se não der:
+ * sem isso, "Assumir" encerraria a sessão de lá e só depois descobriria que não consegue abrir a de cá.
+ */
 export async function loadPty(): Promise<{ spawn: SpawnPty | null; reason?: string }> {
+  let ptySpawn: ((file: string, args: string[], o: Record<string, unknown>) => PtyProcess) | undefined;
   try {
     const mod = (await import('node-pty')) as unknown as {
       spawn?: (file: string, args: string[], o: Record<string, unknown>) => PtyProcess;
       default?: { spawn: (file: string, args: string[], o: Record<string, unknown>) => PtyProcess };
     };
-    const ptySpawn = mod.spawn ?? mod.default?.spawn;
-    if (!ptySpawn) return { spawn: null, reason: 'node-pty sem spawn()' };
-    return {
-      spawn: (file, args, o) => ptySpawn(file, args, { name: 'xterm-256color', cwd: o.cwd, cols: o.cols, rows: o.rows, env: o.env }),
-    };
+    ptySpawn = mod.spawn ?? mod.default?.spawn;
   } catch (err) {
     return { spawn: null, reason: `node-pty não instalado (${errMsg(err)})` };
   }
+  if (!ptySpawn) return { spawn: null, reason: 'node-pty sem spawn()' };
+  const nativeSpawn = ptySpawn;
+  const spawn: SpawnPty = (file, args, o) => nativeSpawn(file, args, { name: 'xterm-256color', cwd: o.cwd, cols: o.cols, rows: o.rows, env: o.env });
+  // No Windows não há spawn-helper; o teste de spawn foi pensado para o macOS e o Linux.
+  if (process.platform === 'win32') return { spawn };
+  const dir = nodePtyDir();
+  if (dir) fixSpawnHelper(dir);
+  const problem = await spawnProblem(spawn);
+  return problem ? { spawn: null, reason: problem } : { spawn };
 }
 
-/** Procura um executável no PATH (no Windows, também com as extensões de PATHEXT). */
+/** Pasta do pacote node-pty (undefined se não der para achar). */
+function nodePtyDir(): string | undefined {
+  try {
+    return dirname(createRequire(import.meta.url).resolve('node-pty/package.json'));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * O node-pty 1.1.0 publica o `spawn-helper` do macOS (prebuilds/darwin-*) sem permissão de execução, e nenhum script
+ * de instalação a devolve: sem ela, todo terminal falha com "posix_spawnp failed". Devolve a permissão nas pastas em
+ * que o node-pty procura o binário nativo (o spawn-helper usado é o que fica ao lado dele).
+ */
+export function fixSpawnHelper(ptyDir: string, platform: NodeJS.Platform = process.platform, arch: string = process.arch): void {
+  for (const sub of ['build/Release', 'build/Debug', `prebuilds/${platform}-${arch}`]) {
+    const file = join(ptyDir, sub, 'spawn-helper');
+    try {
+      const mode = statSync(file).mode;
+      if (!(mode & 0o100)) chmodSync(file, (mode & 0o777) | 0o111);
+    } catch {
+      // não existe (ou não deu para mudar): o teste de spawn diz se o terminal abre
+    }
+  }
+}
+
+/** Abre um terminal de teste (o próprio Node, que sai na hora): null se deu certo, senão o motivo. */
+export function spawnProblem(spawn: SpawnPty, timeoutMs = 5_000): Promise<string | null> {
+  let proc: PtyProcess;
+  try {
+    proc = spawn(process.execPath, ['-e', ''], { cwd: process.cwd(), cols: 80, rows: 24, env: process.env });
+  } catch (err) {
+    return Promise.resolve(`node-pty não consegue abrir terminais (${errMsg(err)})`);
+  }
+  return new Promise((ok) => {
+    // Abriu e não saiu a tempo: o spawn funciona, que é o que interessa aqui.
+    const timer = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        // já saiu
+      }
+      ok(null);
+    }, timeoutMs);
+    proc.onExit(({ exitCode }) => {
+      clearTimeout(timer);
+      ok(exitCode === 0 ? null : `node-pty abriu o terminal de teste, mas ele saiu com o código ${exitCode}`);
+    });
+  });
+}
+
+/** O arquivo existe e pode ser executado (no Windows basta existir: lá não há permissão de execução). */
+export function isExecutableFile(file: string, platform: NodeJS.Platform = process.platform): boolean {
+  try {
+    if (!statSync(file).isFile()) return false;
+    if (platform !== 'win32') accessSync(file, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Procura um executável no PATH (no Windows, também com as extensões de PATHEXT, se o nome não tiver uma). */
 export function findExecutable(name: string, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string | undefined {
   const sep = platform === 'win32' ? ';' : ':';
-  const exts = platform === 'win32' ? ['.exe', ...(env.PATHEXT ?? '.COM;.CMD;.BAT').split(';').filter(Boolean).map((e) => e.toLowerCase())] : [''];
+  const exts =
+    platform === 'win32' && !extname(name) ? ['.exe', ...(env.PATHEXT ?? '.COM;.CMD;.BAT').split(';').filter(Boolean).map((e) => e.toLowerCase())] : [''];
   const dirs = (env.PATH ?? env.Path ?? '').split(sep).filter(Boolean);
   for (const dir of dirs) {
     for (const ext of exts) {
       const file = resolve(dir, name + ext);
-      try {
-        if (statSync(file).isFile()) return file;
-      } catch {
-        // próximo
-      }
+      if (isExecutableFile(file, platform)) return file;
     }
   }
   return undefined;
+}
+
+/**
+ * O executável do Claude Code que o terminal interativo abre: HABBLAUD_CLAUDE_BIN (um caminho, ou um nome procurado
+ * no PATH) ou o `claude` do PATH. undefined se não achar.
+ */
+export function claudeBinFrom(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string | undefined {
+  const set = env.HABBLAUD_CLAUDE_BIN?.trim();
+  if (!set) return findExecutable('claude', env, platform);
+  return /[\\/]/.test(set) ? resolve(set) : findExecutable(set, env, platform);
 }

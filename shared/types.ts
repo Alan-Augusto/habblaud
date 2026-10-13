@@ -623,7 +623,7 @@ export interface OutboxMessage {
   updatedAt: number;
 }
 
-/** Mensagem entregue ao plugin habblaud-mensagens (POST /api/mod/inbox). */
+/** Estado do terminal interativo (OfficeSnapshot.meta.pty). */
 export interface PtyStatus {
   enabled: boolean;
   /** Por que está desligado. */
@@ -647,6 +647,7 @@ export interface PtyInfo {
   exitCode?: number;
 }
 
+/** Mensagem entregue ao plugin habblaud-mensagens (POST /api/mod/inbox). */
 export interface InboxMessage {
   id: string;
   /** O texto como foi digitado: o plugin o manda à sessão como se você o tivesse digitado. */

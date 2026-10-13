@@ -4,7 +4,7 @@
 //   npm start      -> node dist/server/index.js (serve dist/client)
 import http from 'node:http';
 import { join } from 'node:path';
-import { codexDirsRefused } from './accounts/detect';
+import { codexDirsRefused, isDefaultDir } from './accounts/detect';
 import { AccountsService } from './accounts/service';
 import { isTruthy, loadConfig, messagesOffReason, terminalOffReason } from './config';
 import { createApiHandler, sendJson } from './http/app';
@@ -20,9 +20,8 @@ import { errMsg, log } from './log';
 import { NameStore } from './model/names';
 import { Office } from './model/office';
 import { RoomAliases } from './model/room-aliases';
-import { isDefaultDir } from './accounts/detect';
 import { createPtyRoutes } from './http/pty';
-import { findExecutable, loadPty, PtyManager, type ScreenFactory, type SpawnPty } from './pty/manager';
+import { claudeBinFrom, isExecutableFile, loadPty, PtyManager, type ScreenFactory, type SpawnPty } from './pty/manager';
 import { loadHeadlessScreen } from './pty/screen';
 import { openMainAgent, SessionHistory } from './sources/history';
 import { HistorySet, SourceSet } from './sources/source';
@@ -158,7 +157,8 @@ late.messages = messages;
 
 // Terminal interativo (abrir/assumir sessões e encerrar agentes): opt-in com HABBLAUD_PTY=1 (aceita os mesmos
 // valores do HABBLAUD_TERMINAL), só com bind local, fora do Docker, com node-pty e o executável do claude no PATH.
-const claudeBin = process.env.HABBLAUD_CLAUDE_BIN?.trim() || findExecutable('claude');
+const claudeBinSetting = process.env.HABBLAUD_CLAUDE_BIN?.trim();
+const claudeBin = claudeBinFrom();
 let spawnPty: SpawnPty | null = null;
 let ptyScreen: ScreenFactory | undefined;
 let ptyOff: string | undefined;
@@ -166,7 +166,8 @@ const ptyFlag = process.env.HABBLAUD_PTY?.trim();
 if (!isTruthy(ptyFlag)) ptyOff = ptyFlag ? `desligado por HABBLAUD_PTY=${ptyFlag}` : 'desligado (ligue com HABBLAUD_PTY=1)';
 else if (config.inDocker) ptyOff = 'indisponível no Docker (rode com npm start)';
 else if (!config.terminal) ptyOff = `mesma trava do terminal (${terminalOffReason(process.env, config.host, config.inDocker)})`;
-else if (!claudeBin) ptyOff = 'executável "claude" não encontrado no PATH (defina HABBLAUD_CLAUDE_BIN)';
+else if (!claudeBin) ptyOff = claudeBinSetting ? `HABBLAUD_CLAUDE_BIN não encontrado no PATH (${claudeBinSetting})` : 'executável "claude" não encontrado no PATH (defina HABBLAUD_CLAUDE_BIN)';
+else if (!isExecutableFile(claudeBin)) ptyOff = `o executável do Claude Code não roda: ${claudeBin} (confira o HABBLAUD_CLAUDE_BIN)`;
 else {
   const loaded = await loadPty();
   spawnPty = loaded.spawn;

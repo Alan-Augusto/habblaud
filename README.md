@@ -381,9 +381,9 @@ próprio computador** (o padrão) e só abre por `http://localhost` ou `http://1
 
 ### Terminal interativo (assumir, nova sessão e encerrar)
 
-Rodando com `npm start` (fora do Docker), a janela de terminal de cada agente principal é interativa: o botão
-**Abrir terminal** da gaveta, o atalho ao lado de cada agente na lista lateral ou a tecla `T` abrem a mesma janela,
-com abas para os outros agentes do mesmo projeto.
+Com `HABBLAUD_PTY=1` e rodando com `npm start` (fora do Docker), a janela de terminal de cada agente principal é
+interativa: o botão **Abrir terminal** da gaveta, o atalho ao lado de cada agente na lista lateral ou a tecla `T`
+abrem a mesma janela, com abas para os outros agentes do mesmo projeto.
 
 - Sessão aberta aqui: é o Claude Code de verdade (digitar, responder; Esc interrompe o agente, como no terminal).
 - Sessão aberta noutro terminal: **Assumir daqui** (no topo da janela) encerra a sessão lá e continua a **mesma
@@ -396,7 +396,9 @@ Assumir e encerrar pedem um segundo clique; fechar a janela não encerra a sess�
 agente) pode ser arrastada pela barra e redimensionada pelo canto; duplo clique na barra devolve ao lugar.
 **Vem desligado:** ligue com `HABBLAUD_PTY=1` (leia antes o aviso em [Privacidade e segurança](#privacidade-e-segurança)).
 Usa o `node-pty`, o `@xterm/headless` (dependências opcionais) e o `claude` do PATH (`HABBLAUD_CLAUDE_BIN` para
-outro); só aceita pedidos do próprio computador. **Reiniciar o Habblaud encerra as sessões abertas por ele.**
+outro); só aceita pedidos do próprio computador. Ao iniciar, o Habblaud abre um terminal de teste: se o `node-pty` ou
+o `claude` não funcionarem, o recurso fica desligado e o log diz o motivo. **Reiniciar o Habblaud encerra as sessões
+abertas por ele.**
 O terminal ao vivo continua no histórico de sessões, para subagentes e quando o interativo está desligado.
 
 ### Timelapse do dia

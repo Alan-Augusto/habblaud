@@ -1,10 +1,25 @@
 import { EventEmitter } from 'node:events';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { ptyRequestProblem } from '../http/pty';
-import { MAX_PTYS, PtyError, PtyManager, type PtyAgentRef, type PtyManagerOptions, type PtyProcess, type PtyScreen } from './manager';
+import {
+  claudeBinFrom,
+  findExecutable,
+  fixSpawnHelper,
+  isExecutableFile,
+  MAX_PTYS,
+  PtyError,
+  PtyManager,
+  spawnProblem,
+  type PtyAgentRef,
+  type PtyManagerOptions,
+  type PtyProcess,
+  type PtyScreen,
+  type SpawnPty,
+} from './manager';
 import type { ProcInfo } from './procinfo';
 
 const SESSION = '0f8fad5b-d9cb-469f-a165-70867728950e';
@@ -54,7 +69,7 @@ function setup(over: Partial<Omit<PtyManagerOptions, 'agent'>> & { agent?: Parti
       spawned.push({ args, cwd: o.cwd });
       return new FakeProc(++nextPid);
     },
-    claudeBin: 'claude',
+    claudeBin: process.execPath,
     accounts: () => [{ id: 'acc', dir: join(tmpdir(), 'conta'), isDefault: true }],
     agent: (id) => (id === agent.id ? agent : undefined),
     onChange: () => {},
@@ -180,6 +195,24 @@ describe('PtyManager: assumir', () => {
     expect(s.spawned).toHaveLength(0);
   });
 
+  it('claude que não roda: recusa antes de encerrar', async () => {
+    const s = setup({ claudeBin: join(tmpdir(), 'nao-existe-habblaud-claude') });
+    await rejects(s.manager.takeover(`acc:${PID}`), 503);
+    expect(s.killPid).not.toHaveBeenCalled();
+    expect(s.alive.has(PID)).toBe(true);
+  });
+
+  it('não abriu aqui depois de encerrar lá: o erro diz como continuar a conversa', async () => {
+    const s = setup({
+      spawn: () => {
+        throw new Error('posix_spawnp failed.');
+      },
+    });
+    const err = await rejects(s.manager.takeover(`acc:${PID}`), 500);
+    expect(err.message).toContain(`claude --resume ${SESSION}`);
+    expect(err.message).toContain('posix_spawnp failed');
+  });
+
   it('registro antigo (PID reaproveitado): não encerra ninguém', async () => {
     const s = setup({ proc: { startMs: STARTED + 86_400_000, name: 'node' } });
     await rejects(s.manager.takeover(`acc:${PID}`), 409);
@@ -225,7 +258,7 @@ describe('PtyManager: tela para quem conecta', () => {
     let proc: FakeProc | undefined;
     const manager = new PtyManager({
       spawn: () => (proc = new FakeProc(77)),
-      claudeBin: 'claude',
+      claudeBin: process.execPath,
       accounts: () => [{ id: 'acc', dir: tmpdir(), isDefault: true }],
       agent: () => undefined,
       onChange: () => {},
@@ -262,4 +295,72 @@ describe('ptyRequestProblem', () => {
     expect(ptyRequestProblem(req({ host: 'localhost:4747', 'sec-fetch-site': 'same-site' }))).toMatch(/origem/);
     expect(ptyRequestProblem(req({ host: 'localhost:4747', 'sec-fetch-site': 'cross-site' }))).toMatch(/origem/);
   });
+});
+
+describe('carregar o node-pty e achar o claude', () => {
+  const unix = process.platform !== 'win32';
+
+  /** Pasta temporária, apagada no fim. */
+  function withDir(fn: (dir: string) => void | Promise<void>) {
+    return async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'habblaud-pty-'));
+      try {
+        await fn(dir);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+  }
+
+  it.runIf(unix)(
+    'devolve a permissão de execução ao spawn-helper (o node-pty 1.1.0 publica sem)',
+    withDir((dir) => {
+      const sub = join(dir, 'prebuilds', 'darwin-arm64');
+      mkdirSync(sub, { recursive: true });
+      writeFileSync(join(sub, 'spawn-helper'), '');
+      chmodSync(join(sub, 'spawn-helper'), 0o644);
+      fixSpawnHelper(dir, 'darwin', 'arm64');
+      expect(statSync(join(sub, 'spawn-helper')).mode & 0o777).toBe(0o755);
+      // Sem spawn-helper nenhum: nada a fazer, sem erro.
+      expect(() => fixSpawnHelper(join(dir, 'vazia'), 'darwin', 'arm64')).not.toThrow();
+    }),
+  );
+
+  it('terminal de teste: aponta o motivo quando o spawn falha ou o processo sai com erro', async () => {
+    const failing: SpawnPty = () => {
+      throw new Error('posix_spawnp failed.');
+    };
+    expect(await spawnProblem(failing)).toMatch(/posix_spawnp failed/);
+    const exiting = (code: number): SpawnPty => () => {
+      const p = new FakeProc(1);
+      queueMicrotask(() => p.exit({ exitCode: code }));
+      return p;
+    };
+    expect(await spawnProblem(exiting(0))).toBeNull();
+    expect(await spawnProblem(exiting(1))).toMatch(/código 1/);
+  });
+
+  it.runIf(unix)(
+    'executável: precisa existir e poder rodar; o PATH pula o que não roda',
+    withDir((dir) => {
+      const a = join(dir, 'a');
+      const b = join(dir, 'b');
+      mkdirSync(a);
+      mkdirSync(b);
+      writeFileSync(join(a, 'claude'), '#!/bin/sh\n');
+      chmodSync(join(a, 'claude'), 0o644);
+      writeFileSync(join(b, 'claude'), '#!/bin/sh\n');
+      chmodSync(join(b, 'claude'), 0o755);
+      expect(isExecutableFile(join(a, 'claude'))).toBe(false);
+      expect(isExecutableFile(join(b, 'claude'))).toBe(true);
+      expect(isExecutableFile(dir)).toBe(false);
+      const env = { PATH: `${a}:${b}` };
+      expect(findExecutable('claude', env)).toBe(join(b, 'claude'));
+      expect(claudeBinFrom(env)).toBe(join(b, 'claude'));
+      // HABBLAUD_CLAUDE_BIN: um caminho vale como está; um nome é procurado no PATH.
+      expect(claudeBinFrom({ ...env, HABBLAUD_CLAUDE_BIN: join(a, 'claude') })).toBe(join(a, 'claude'));
+      expect(claudeBinFrom({ ...env, HABBLAUD_CLAUDE_BIN: 'claude' })).toBe(join(b, 'claude'));
+      expect(claudeBinFrom({ ...env, HABBLAUD_CLAUDE_BIN: 'outro' })).toBeUndefined();
+    }),
+  );
 });

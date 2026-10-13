@@ -8,6 +8,7 @@ import { moveAgent, orderAgents } from './agentorder';
 import { h, KeyedList, setAttr, setHidden, setText, setTitle } from './dom';
 import { activityFallback } from './model';
 import { ptyControllable, stopAgent } from './ptyapi';
+import { createStatusDot, updateStatusDot } from './widgets';
 
 /** Quanto tempo o X fica pedindo confirmação. */
 const CONFIRM_MS = 3000;
@@ -17,7 +18,6 @@ function doingOf(a: AgentInfo): string {
   if (a.status === 'working' || a.status === 'waiting') return a.activity?.text ?? activityFallback(a);
   return a.title ?? '';
 }
-import { createStatusDot, updateStatusDot } from './widgets';
 
 export class TermTabs {
   readonly el: HTMLElement;
