@@ -555,6 +555,9 @@ and waits for the next request, give a new instruction or correct its course, wi
   with no argument) are not sent: the box says so and keeps the text. The output of text commands shows up in the
   office terminal. Claude Code only: in Codex, the text goes as a
   regular message.
+- **Command menu:** type `/` at the start of the box and it lists the commands the session has (Claude Code's own,
+  plugins', yours and MCP servers'), each with its description. Keep typing to filter; the arrows move, `Enter` or
+  `Tab` complete and `Esc` closes. Those tagged "terminal only" open a panel and do not go through the box.
 - The box shows the status: **queued** (the session fetches messages every 2 seconds), **delivered** or **not
   delivered**, with the reason. With the agent busy, the message waits and goes in when it finishes its turn, like a
   prompt typed while the agent is working.

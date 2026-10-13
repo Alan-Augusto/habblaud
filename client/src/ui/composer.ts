@@ -4,22 +4,32 @@
 // terminal (só a sessão ao vivo). Enter manda, Shift+Enter quebra a linha; a linha de situação acompanha a entrega
 // (GET /api/messages/:id) até ela se resolver. As teclas digitadas aqui não disparam os atalhos globais. O rascunho de
 // cada agente fica guardado (só na memória) ao trocar de agente. O microfone (ui/dictation.ts, Whisper local no Mac)
-// põe o texto ditado no cursor; aparece quando o ditado funciona daqui. A lógica pura está em ui/composer-model.ts.
+// põe o texto ditado no cursor; aparece quando o ditado funciona daqui. Com `/` no começo, abre o menu de comandos de
+// barra da sessão do agente (a lista vem do plugin, por GET /api/messages/commands/:id): filtra ao digitar, setas
+// andam, Enter ou Tab completam e Esc fecha. A lógica pura está em ui/composer-model.ts.
 import { MESSAGE_MAX } from '../../../shared/messages';
-import type { AgentInfo, OutboxMessage, Provider } from '../../../shared/types';
+import type { AgentInfo, OutboxMessage, Provider, SessionCommand } from '../../../shared/types';
 import {
+  applyCommand,
   canSend,
+  commandOptions,
+  commandQuery,
+  COMMANDS_EMPTY_FRESH_MS,
+  COMMANDS_FRESH_MS,
   composerMode,
   composerTip,
   enterSends,
   isSettled,
   LOST_ERROR,
+  menuAction,
   messageText,
+  moveActive,
   OFFLINE_ERROR,
   POLL_LIMIT_MS,
   pollDelay,
   sendStatusText,
   timeoutError,
+  type CommandOption,
   type ComposerMode,
   type SendState,
 } from './composer-model';
@@ -65,6 +75,14 @@ export class MessageComposer {
   /** Rascunho que recebe o ditado em andamento (o agente pode mudar enquanto o Mac transcreve). */
   private dictKey = '';
   private canDictate = false;
+  /** Menu de comandos de barra: a lista de cada agente (com a hora da busca), o que está na tela e o destaque. */
+  private menu: HTMLElement;
+  private commandLists = new Map<string, { at: number; list: SessionCommand[] }>();
+  private fetching = new Set<string>();
+  private options: CommandOption[] = [];
+  private active = 0;
+  /** Fechado com Esc: só volta a abrir quando o texto mudar. */
+  private menuClosed = false;
 
   constructor(
     private ctx: UiContext,
@@ -80,9 +98,21 @@ export class MessageComposer {
       this.drafts.set(this.agentId, this.box.value);
       this.resize();
       this.syncButton();
+      this.menuClosed = false;
+      this.syncMenu();
     });
-    this.box.addEventListener('focus', () => this.resize());
+    this.box.addEventListener('focus', () => {
+      this.resize();
+      this.syncMenu();
+    });
+    this.box.addEventListener('blur', () => this.syncMenu());
+    // O cursor saiu do nome do comando (setas, clique): o menu fecha; voltou, abre.
+    this.box.addEventListener('keyup', () => this.syncMenu());
+    this.box.addEventListener('click', () => this.syncMenu());
     this.box.addEventListener('keydown', (e) => this.onKey(e));
+    this.menu = h('ul', { class: 'ui-msg__menu', role: 'listbox', hidden: true, attrs: { id: `ui-msg-menu-${variant}`, 'aria-label': tr('Comandos de barra') } });
+    setAttr(this.box, 'aria-controls', this.menu.id);
+    setAttr(this.box, 'aria-autocomplete', 'list');
     this.sendBtn = h(
       'button',
       {
@@ -115,7 +145,9 @@ export class MessageComposer {
     this.hint = h('p', { class: 'ui-msg__hint', hidden: true });
     this.status = h('p', { class: 'ui-msg__status', role: 'status', hidden: true, attrs: { 'aria-live': 'polite' } });
     this.tip = term ? null : h('p', { class: 'ui-msg__tip', text: composerTip() });
-    this.el = h('div', { class: `ui-msg ui-msg--${variant}` }, this.hint, this.row, this.dictStatus, this.status, this.tip);
+    // O menu abre para cima, ancorado na linha da caixa.
+    const anchor = h('div', { class: 'ui-msg__anchor' }, this.menu, this.row);
+    this.el = h('div', { class: `ui-msg ui-msg--${variant}` }, this.hint, anchor, this.dictStatus, this.status, this.tip);
   }
 
   /**
@@ -170,6 +202,7 @@ export class MessageComposer {
     setHidden(this.hint, term || mode.kind !== 'hint');
     setText(this.hint, mode.kind === 'hint' ? mode.text : '');
     this.syncButton();
+    this.syncMenu();
 
     const state = this.states.get(key);
     const text = sendStatusText(state, Date.now(), this.providers.get(key) ?? this.provider);
@@ -186,6 +219,20 @@ export class MessageComposer {
     // Os atalhos globais (F, T, P, /, setas...) não valem dentro da caixa. Com Ctrl/⌘ a tecla segue adiante
     // (Ctrl/⌘+F busca na conversa do terminal; os atalhos globais ignoram essas combinações).
     if (!e.ctrlKey && !e.metaKey) e.stopPropagation();
+    if (!this.menu.hidden) {
+      const action = menuAction(e, commandQuery(this.box.value, this.box.selectionStart ?? 0) ?? '', this.options[this.active]);
+      if (action) {
+        // Esc fecha só o menu (o próximo sai da caixa).
+        e.preventDefault();
+        e.stopPropagation();
+        if (action === 'close') {
+          this.menuClosed = true;
+          this.syncMenu();
+        } else if (action === 'pick') this.pick(this.active);
+        else this.setActive(moveActive(this.active, this.options.length, action === 'next' ? 1 : -1));
+        return;
+      }
+    }
     if (e.key === 'Escape') {
       // Esc só sai da caixa (o próximo fecha o terminal ou a gaveta).
       e.preventDefault();
@@ -198,6 +245,92 @@ export class MessageComposer {
       e.preventDefault();
       void this.send();
     }
+  }
+
+  /**
+   * Abre, atualiza ou fecha o menu de comandos conforme o texto e o cursor. Só no Claude Code (é o plugin dele que
+   * manda a lista) e com a caixa em foco; sem comando que case, fica fechado.
+   */
+  private syncMenu(): void {
+    const box = this.box;
+    const focused = document.activeElement === box;
+    const query = this.mode.kind === 'ready' && this.provider === 'claude' && focused && !this.menuClosed ? commandQuery(box.value, box.selectionStart ?? 0) : undefined;
+    if (query === undefined) return this.showMenu([]);
+    this.loadCommands(this.agentId);
+    const options = commandOptions(this.commandLists.get(this.agentId)?.list ?? [], query);
+    // A lista é a mesma (o cursor andou, a tecla soltou): o destaque fica; mudou, volta ao primeiro.
+    const same = options.length === this.options.length && options.every((o, i) => o.name === this.options[i].name);
+    this.showMenu(options, same ? this.active : 0);
+  }
+
+  private showMenu(options: CommandOption[], active = 0): void {
+    const same = options.length === this.options.length && options.every((o, i) => o.name === this.options[i].name && o.description === this.options[i].description);
+    this.options = options;
+    const open = options.length > 0;
+    setHidden(this.menu, !open);
+    setAttr(this.box, 'aria-expanded', String(open));
+    if (!same) {
+      this.menu.replaceChildren(
+        ...options.map((o, i) => {
+          const item = h(
+            'li',
+            { class: `ui-msg__opt${o.panel ? ' is-panel' : ''}`, role: 'option', attrs: { id: `${this.menu.id}-${i}` } },
+            h('span', { class: 'ui-msg__opt-name', text: `/${o.name}` }),
+            h('span', { class: 'ui-msg__opt-desc', text: o.description }),
+            o.panel ? h('span', { class: 'ui-msg__opt-tag', text: tr('só no terminal'), title: tr('Abre um painel no terminal da sessão, que o escritório não mostra') }) : null,
+          );
+          // mousedown (e não click): a caixa não perde o foco, e o menu não fecha antes da escolha.
+          item.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            this.pick(i);
+          });
+          return item;
+        }),
+      );
+    }
+    this.setActive(open ? Math.min(active, options.length - 1) : 0);
+  }
+
+  private setActive(index: number): void {
+    this.active = index;
+    const items = this.menu.children;
+    for (let i = 0; i < items.length; i++) {
+      const on = i === index;
+      items[i].classList.toggle('is-active', on);
+      setAttr(items[i], 'aria-selected', String(on));
+      if (on && !this.menu.hidden) (items[i] as HTMLElement).scrollIntoView({ block: 'nearest' });
+    }
+    setAttr(this.box, 'aria-activedescendant', this.menu.hidden || !items[index] ? null : items[index].id);
+  }
+
+  /** Completa a caixa com o comando escolhido; o menu fecha (o cursor fica depois do nome, pronto para o argumento). */
+  private pick(index: number): void {
+    const option = this.options[index];
+    if (!option) return;
+    const { value, caret } = applyCommand(this.box.value, option.name);
+    this.box.value = value.slice(0, MESSAGE_MAX);
+    this.drafts.set(this.agentId, this.box.value);
+    this.box.focus({ preventScroll: true });
+    this.box.setSelectionRange(caret, caret);
+    this.resize();
+    this.syncButton();
+    this.syncMenu();
+  }
+
+  /** Busca a lista de comandos do agente, se a que há é velha (ou não há). Falha = fica a que havia. */
+  private loadCommands(agentId: string): void {
+    const known = this.commandLists.get(agentId);
+    const fresh = known && Date.now() - known.at < (known.list.length ? COMMANDS_FRESH_MS : COMMANDS_EMPTY_FRESH_MS);
+    if (fresh || this.fetching.has(agentId)) return;
+    this.fetching.add(agentId);
+    this.ctx.store
+      .sessionCommands(agentId)
+      .then((list) => this.commandLists.set(agentId, { at: Date.now(), list }))
+      .catch(() => undefined)
+      .finally(() => {
+        this.fetching.delete(agentId);
+        if (agentId === this.agentId) this.syncMenu();
+      });
   }
 
   /** Texto ditado: no cursor, se a caixa ainda é a de quem ditou; senão, no fim do rascunho daquele agente. */

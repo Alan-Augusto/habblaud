@@ -5,7 +5,7 @@
 // Também cuida da reconexão: quando o navegador desiste do stream (EventSource fechado após erro HTTP,
 // ex.: servidor reiniciando atrás de um proxy), tenta de novo com espera crescente.
 import type { AppearanceParts } from '../../../shared/appearance';
-import type { Activity, AgentDetail, AgentInfo, FeedItem, Notice, OfficeSnapshot, OutboxMessage, PermissionDecision, PermissionRequestInfo, RoomInfo } from '../../../shared/types';
+import type { Activity, AgentDetail, AgentInfo, FeedItem, Notice, OfficeSnapshot, OutboxMessage, PermissionDecision, PermissionRequestInfo, RoomInfo, SessionCommand } from '../../../shared/types';
 import { DemoSimulator } from '../../../shared/demo/simulator';
 import { tr } from '../../../shared/i18n';
 
@@ -323,6 +323,19 @@ export class OfficeStore {
     if (res.status === 201 && body && typeof body === 'object') return { message: body as OutboxMessage };
     const error = (body as { error?: unknown } | undefined)?.error;
     return { error: typeof error === 'string' ? error : tr('erro {0}', [res.status]) };
+  }
+
+  /**
+   * Comandos de barra da sessão do agente (GET /api/messages/commands/:id), para o menu da caixa de mensagem. Vazia =
+   * a sessão ainda não mandou a lista (ou o agente não é do Claude Code). No ?mock=1 não há sessão: vazia. Sem
+   * conexão: lança.
+   */
+  async sessionCommands(agentId: string): Promise<SessionCommand[]> {
+    if (this.mock) return [];
+    const res = await fetch(`/api/messages/commands/${encodeURIComponent(agentId)}`);
+    if (!res.ok) throw new Error(tr('erro {0}', [res.status]));
+    const list = ((await res.json()) as { commands?: unknown }).commands;
+    return Array.isArray(list) ? (list as SessionCommand[]) : [];
   }
 
   /** Situação de uma mensagem (GET /api/messages/:id). null = o servidor não a conhece (404). Sem conexão: lança. */

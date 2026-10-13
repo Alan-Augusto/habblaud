@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentInfo } from '../../../shared/types';
+import type { AgentInfo, SessionCommand } from '../../../shared/types';
 import {
+  applyCommand,
   canSend,
+  commandOptions,
+  commandQuery,
+  menuAction,
+  moveActive,
   CODEX_BRIDGE_HINT,
   CODEX_TIMEOUT_ERROR,
   composerMode,
@@ -127,5 +132,77 @@ describe('caixa de mensagem (peças puras)', () => {
     expect(pollDelay(0)).toBeLessThan(1_000);
     expect(pollDelay(20_000)).toBeGreaterThan(pollDelay(0));
     expect(pollDelay(60_000)).toBeGreaterThanOrEqual(pollDelay(20_000));
+  });
+});
+
+describe('menu de comandos de barra', () => {
+  const LIST: SessionCommand[] = [
+    { name: 'compact', description: 'Compacta a conversa', source: 'builtin' },
+    { name: 'config', description: 'Abre as configurações', source: 'builtin' },
+    { name: 'model', description: 'Troca o modelo', source: 'builtin' },
+    { name: 'habblaud:revisão', description: 'Revisa o que mudou', source: 'plugin' },
+    { name: 'recompilar', description: 'Compila tudo de novo', source: 'user' },
+  ];
+  const names = (q: string) => commandOptions(LIST, q).map((c) => c.name);
+  const key = (k: string, over: Partial<KeyboardEvent> = {}) => ({ key: k, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, isComposing: false, ...over });
+
+  it('abre com a barra no começo e o cursor ainda no nome do comando', () => {
+    expect(commandQuery('/', 1)).toBe('');
+    expect(commandQuery('/com', 4)).toBe('com');
+    expect(commandQuery('/compact agora', 4)).toBe('com');
+    expect(commandQuery('/compact agora', 9)).toBeUndefined();
+    expect(commandQuery('/model opus', 11)).toBeUndefined();
+    expect(commandQuery('roda /compact', 13)).toBeUndefined();
+    expect(commandQuery(' /compact', 9)).toBeUndefined();
+    expect(commandQuery('', 0)).toBeUndefined();
+  });
+
+  it('filtra sem diferenciar maiúsculas nem acentos: começo do nome, depois meio do nome, depois a descrição', () => {
+    expect(names('')).toEqual(LIST.map((c) => c.name));
+    expect(names('COM')).toEqual(['compact', 'recompilar']);
+    expect(names('co')).toEqual(['compact', 'config', 'recompilar']);
+    // A parte depois de `:` conta como começo; a descrição vem por último.
+    expect(names('revisao')).toEqual(['habblaud:revisão']);
+    expect(names('mod')).toEqual(['model']);
+    expect(names('troca')).toEqual(['model']);
+    // Duas letras não buscam na descrição ("re" está em "Revisa", mas só o nome conta).
+    expect(names('re')).toEqual(['habblaud:revisão', 'recompilar']);
+    expect(names('rev')).toEqual(['habblaud:revisão']);
+    expect(names('zzz')).toEqual([]);
+  });
+
+  it('marca o comando que sempre abre um painel (o que só abre sem argumento, não)', () => {
+    const by = Object.fromEntries(commandOptions(LIST, '').map((c) => [c.name, c.panel]));
+    expect(by).toMatchObject({ config: true, model: false, compact: false });
+  });
+
+  it('escolher troca o que foi digitado pelo nome, com um espaço, e mantém o que vinha depois', () => {
+    expect(applyCommand('/com', 'compact')).toEqual({ value: '/compact ', caret: 9 });
+    expect(applyCommand('/mo opus', 'model')).toEqual({ value: '/model opus', caret: 7 });
+    expect(applyCommand('/', 'habblaud:revisão')).toEqual({ value: '/habblaud:revisão ', caret: 18 });
+  });
+
+  it('teclas: setas andam, Tab e Enter completam, Esc fecha; com o nome inteiro digitado, Enter manda', () => {
+    const active = commandOptions(LIST, 'com')[0];
+    expect(menuAction(key('ArrowDown'), 'com', active)).toBe('next');
+    expect(menuAction(key('ArrowUp'), 'com', active)).toBe('prev');
+    expect(menuAction(key('Tab'), 'com', active)).toBe('pick');
+    expect(menuAction(key('Tab', { shiftKey: true }), 'com', active)).toBeUndefined();
+    expect(menuAction(key('Enter'), 'com', active)).toBe('pick');
+    expect(menuAction(key('Enter'), 'compact', active)).toBeUndefined();
+    expect(menuAction(key('Enter', { shiftKey: true }), 'com', active)).toBeUndefined();
+    expect(menuAction(key('Enter', { isComposing: true }), 'com', active)).toBeUndefined();
+    expect(menuAction(key('Escape'), 'com', active)).toBe('close');
+    expect(menuAction(key('a'), 'com', active)).toBeUndefined();
+    // Sem nenhum comando na lista, só o Esc tem o que fazer.
+    expect(menuAction(key('Enter'), 'zzz', undefined)).toBeUndefined();
+    expect(menuAction(key('ArrowDown'), 'zzz', undefined)).toBeUndefined();
+  });
+
+  it('o destaque dá a volta nas pontas', () => {
+    expect(moveActive(0, 3, 1)).toBe(1);
+    expect(moveActive(2, 3, 1)).toBe(0);
+    expect(moveActive(0, 3, -1)).toBe(2);
+    expect(moveActive(0, 0, 1)).toBe(0);
   });
 });

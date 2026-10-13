@@ -1,9 +1,10 @@
 // Caixa de mensagem (ui/composer.ts), parte pura e testada em ui/composer-model.test.ts: quando a caixa aparece (e
-// por que não), o que a tecla Enter faz, a linha de situação de cada envio e o ritmo da consulta da entrega.
+// por que não), o que a tecla Enter faz, o menu de comandos de barra (quando abre, o que lista e o que cada tecla faz
+// nele), a linha de situação de cada envio e o ritmo da consulta da entrega.
 // No Codex a mensagem entra na fila da sessão (`codex queue`) e vira prompt quando ela fica ociosa: "Entregue" diz
 // isso; sem quem entregue (no Docker, o auxiliar do host), a dica é a do `npm run codex:bridge`.
-import { MESSAGE_MAX } from '../../../shared/messages';
-import type { AgentInfo, OutboxStatus, Provider } from '../../../shared/types';
+import { MESSAGE_MAX, panelCommandReason } from '../../../shared/messages';
+import type { AgentInfo, OutboxStatus, Provider, SessionCommand } from '../../../shared/types';
 import { tr } from '../../../shared/i18n';
 
 /** Dica para quem tem o recurso ligado, mas a sessão do agente não está com o plugin conectado. */
@@ -59,6 +60,77 @@ export function canSend(raw: string): boolean {
 export function enterSends(e: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'altKey' | 'isComposing'>): boolean {
   return e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.isComposing;
 }
+
+// ---------------------------------------------------------------- menu de comandos de barra
+
+/**
+ * O que filtra o menu de comandos (undefined = fechado): a caixa começa com `/` e o cursor ainda está no nome do
+ * comando (nenhum espaço antes dele). Só a barra = '' (todos os comandos).
+ */
+export function commandQuery(value: string, caret: number): string | undefined {
+  return /^\/(\S*)$/.exec(value.slice(0, caret))?.[1];
+}
+
+export interface CommandOption {
+  name: string;
+  description: string;
+  /** Abre sempre um painel no terminal da sessão: o escritório não o manda (shared/messages.ts). */
+  panel: boolean;
+}
+
+export const DESCRIPTION_QUERY_MIN = 3;
+
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/**
+ * Os comandos que casam com o que foi digitado, sem diferenciar maiúsculas nem acentos. Primeiro os que começam
+ * assim (no nome ou na parte depois de `:`, como em `plugin:comando`), depois os que têm o trecho no nome e, por
+ * fim, só na descrição (a partir de DESCRIPTION_QUERY_MIN letras: com menos, casa com quase tudo); em cada grupo, na
+ * ordem em que a sessão os lista.
+ */
+export function commandOptions(list: readonly SessionCommand[], query: string): CommandOption[] {
+  const q = fold(query);
+  const groups: CommandOption[][] = [[], [], []];
+  for (const c of list) {
+    const name = fold(c.name);
+    const rank = !q || name.startsWith(q) || name.slice(name.lastIndexOf(':') + 1).startsWith(q) ? 0 : name.includes(q) ? 1 : q.length >= DESCRIPTION_QUERY_MIN && fold(c.description).includes(q) ? 2 : -1;
+    if (rank < 0) continue;
+    groups[rank].push({ name: c.name, description: c.description, panel: panelCommandReason(`/${c.name} x`) !== undefined });
+  }
+  return groups.flat();
+}
+
+/** O comando escolhido no lugar do que foi digitado: `/nome ` (o que vinha depois do nome fica) e o cursor depois dele. */
+export function applyCommand(value: string, name: string): { value: string; caret: number } {
+  const head = `/${name} `;
+  return { value: head + value.replace(/^\/\S*\s*/, ''), caret: head.length };
+}
+
+export type MenuAction = 'next' | 'prev' | 'pick' | 'close';
+
+/**
+ * O que uma tecla faz com o menu aberto (undefined = segue o caminho normal da caixa). Setas andam, Tab completa,
+ * Esc fecha. Enter completa o comando destacado; com o nome já digitado por inteiro, manda a mensagem.
+ */
+export function menuAction(e: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'altKey' | 'ctrlKey' | 'metaKey' | 'isComposing'>, query: string, active: CommandOption | undefined): MenuAction | undefined {
+  if (e.isComposing || e.ctrlKey || e.metaKey) return undefined;
+  if (e.key === 'Escape') return 'close';
+  if (!active) return undefined;
+  if (e.key === 'ArrowDown') return 'next';
+  if (e.key === 'ArrowUp') return 'prev';
+  if (e.key === 'Tab' && !e.shiftKey && !e.altKey) return 'pick';
+  if (enterSends(e) && active.name !== query) return 'pick';
+  return undefined;
+}
+
+/** O índice destacado depois de andar `delta` numa lista de `count` itens (dá a volta nas pontas). */
+export function moveActive(index: number, count: number, delta: number): number {
+  return count > 0 ? (index + delta + count) % count : 0;
+}
+
+/** A lista de comandos de uma sessão vale este tempo na página; vazia (a sessão ainda não a mandou), bem menos. */
+export const COMMANDS_FRESH_MS = 30_000;
+export const COMMANDS_EMPTY_FRESH_MS = 4_000;
 
 /**
  * Situação do último envio de um agente: `sending` (o POST ainda não voltou), `rejected` (o servidor recusou: o texto

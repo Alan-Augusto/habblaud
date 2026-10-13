@@ -583,6 +583,10 @@ son tour et attend la demande suivante, donner une nouvelle instruction ou corri
   terminal (`/usage`, `/config`, `/model` sans argument) ne sont pas envoyées : la zone le signale et garde le texte.
   La sortie des commandes texte s'affiche dans le terminal du bureau. Claude Code
   uniquement : dans Codex, le texte part comme un message ordinaire.
+- **Menu des commandes :** tapez `/` au début de la zone et elle liste les commandes de la session (celles de Claude
+  Code, des plugins, les vôtres et celles des serveurs MCP), chacune avec sa description. Continuez à taper pour
+  filtrer ; les flèches déplacent, `Entrée` ou `Tab` complètent et `Échap` ferme. Celles marquées « terminal
+  uniquement » ouvrent un panneau et ne passent pas par la zone.
 - La zone indique l'état : **en file** (la session récupère les messages toutes les 2 secondes), **remis** ou **non
   remis**, avec la raison. Si l'agent est occupé, le message attend et entre quand il finit son tour, comme un
   prompt tapé pendant que l'agent travaille.

@@ -2600,4 +2600,7 @@ export const FR: Readonly<Record<string, string>> = {
   "Acesso pelo celular": "Accès depuis le téléphone",
   "Sair deste aparelho": "Se déconnecter de cet appareil",
   "Encerra o login aqui (uma cópia do cookie também deixa de valer). Para voltar, entre com usuário e senha.": "Met fin à la connexion ici (une copie du cookie cesse aussi de fonctionner). Pour revenir, connectez-vous avec votre nom d'utilisateur et votre mot de passe.",
+  "Comandos de barra": "Commandes slash",
+  "só no terminal": "terminal uniquement",
+  "Abre um painel no terminal da sessão, que o escritório não mostra": "Ouvre un panneau dans le terminal de la session, que le bureau n'affiche pas",
 };
