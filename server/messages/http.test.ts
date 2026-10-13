@@ -15,7 +15,7 @@ import { NameStore } from '../model/names';
 import { Office } from '../model/office';
 import { request } from '../test/permission-server';
 import { tempDir } from '../test/fixtures';
-import { createMessageRoutes } from './http';
+import { createMessageRoutes, type ProjectLister } from './http';
 import { MessageRegistry, type MessageRegistryOptions } from './registry';
 
 setQuiet(true);
@@ -31,7 +31,7 @@ interface MessageServer {
 }
 
 /** Office + Hub + rotas de verdade numa porta livre do 127.0.0.1, com um agente principal na sessão "sess-1". */
-async function serveMessages(opts: { enabled?: boolean; demo?: boolean; registry?: Partial<MessageRegistryOptions> } = {}): Promise<MessageServer> {
+async function serveMessages(opts: { enabled?: boolean; demo?: boolean; registry?: Partial<MessageRegistryOptions>; listFiles?: ProjectLister } = {}): Promise<MessageServer> {
   const tmp = tempDir();
   const enabled = opts.enabled ?? true;
   const late: { registry?: MessageRegistry } = {};
@@ -66,7 +66,7 @@ async function serveMessages(opts: { enabled?: boolean; demo?: boolean; registry
     version: 't',
     inDocker: false,
     terminal: true,
-    messages: registry ? createMessageRoutes(registry) : undefined,
+    messages: registry ? createMessageRoutes(registry, opts.listFiles) : undefined,
   });
   const guard = createRequestGuard({ allowedHosts: new Set(['habblaud.lan']) });
   const server = http.createServer((req, res) => {
@@ -230,6 +230,30 @@ describe('rotas', () => {
     });
     expect((await request(srv.base, '/api/messages/commands/nao-existe')).json).toEqual({ commands: [] });
     expect((await request(srv.base, path, { method: 'POST', body: {} })).status).toBe(405);
+  });
+
+  it('arquivos do projeto do agente (o @ da caixa): busca na lista da pasta dele; sem agente 404, sem quem liste 503', async () => {
+    const asked: string[] = [];
+    srv = await serveMessages({
+      listFiles: async (root) => {
+        asked.push(root);
+        return { files: ['README.md', 'src/app.ts', 'src/ui/composer.ts', 'docs/compras.md'], truncated: false };
+      },
+    });
+    const path = `/api/messages/files/${encodeURIComponent(MAIN)}`;
+    expect((await request(srv.base, `${path}?q=comp`)).json).toEqual({ files: ['composer.ts', 'compras.md'].map((n) => (n === 'composer.ts' ? 'src/ui/composer.ts' : 'docs/compras.md')).sort((a, b) => a.length - b.length), truncated: false });
+    expect((await request(srv.base, path)).json).toEqual({ files: ['README.md', 'src/app.ts', 'docs/compras.md', 'src/ui/composer.ts'], truncated: false });
+    expect(asked).toEqual(['/p/loja', '/p/loja']);
+    expect((await request(srv.base, '/api/messages/files/nao-existe')).status).toBe(404);
+    expect((await request(srv.base, path, { method: 'POST', body: {} })).status).toBe(405);
+    await srv.close();
+
+    srv = await serveMessages({ listFiles: async () => ({ error: 'o auxiliar do computador (npm run codex:bridge) não está rodando', status: 503 }) });
+    expect(await request(srv.base, path)).toMatchObject({ status: 503, json: { error: expect.stringMatching(/codex:bridge/) } });
+    await srv.close();
+
+    srv = await serveMessages();
+    expect((await request(srv.base, path)).status).toBe(503);
   });
 
   it('fluxo: plugin conecta (canMessage) → página manda (201) → plugin busca → confirma → página consulta (delivered) e o feed mostra', async () => {

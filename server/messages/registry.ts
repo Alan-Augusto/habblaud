@@ -370,6 +370,15 @@ export class MessageRegistry {
   }
 
   /**
+   * A pasta do projeto de um agente principal presente (a sala dele), para listar os arquivos que dá para citar com
+   * `@`. Agente desconhecido, subagente, que já saiu ou sem pasta conhecida: undefined.
+   */
+  projectOf(agentId: string): string | undefined {
+    const a = this.opts.office.get(agentId);
+    return present(a) && a.kind === 'main' && a.roomId.startsWith('/') ? a.roomId : undefined;
+  }
+
+  /**
    * Confirmação do plugin: `sent` → `delivered` (ok) ou `failed` (com o motivo). Só vale da sessão que buscou a
    * mensagem; ids desconhecidos ou em outra situação são ignorados. Uma confirmação atrasada (a mensagem já tinha
    * falhado por falta dela) ainda corrige a situação: o plugin é quem sabe se o texto entrou.

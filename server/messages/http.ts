@@ -5,6 +5,9 @@
 //   GET  /api/messages/:id      (página)  situação da mensagem: 200 OutboxMessage | 404
 //   GET  /api/messages/commands/:agentId
 //                               (página)  comandos de barra da sessão do agente: 200 {commands: SessionCommand[]}
+//   GET  /api/messages/files/:agentId?q=texto
+//                               (página)  arquivos do projeto do agente que casam com o texto, para citar com `@`:
+//                                         200 {files: string[], truncated} | 404 | 503 (sem o auxiliar do host)
 //   POST /api/mod/inbox         (plugin)  {session, account?, commands?}: 200 {messages: InboxMessage[], needCommands?}
 //                                         (marca a presença; `commands` = a lista de comandos de barra da sessão, que
 //                                         o plugin manda quando ela muda ou quando a resposta traz `needCommands`)
@@ -14,11 +17,19 @@
 //   POST /api/codex/bridge/ack  (auxiliar) {results: [{id, ok, error?}]}: 200 {ok: true}
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, readJson, sendJson } from '../http/app';
+import { rankFiles } from '../../shared/messages';
+import type { ListResult } from '../deliveries/fetcher';
 import { InvalidRequest, MAX_OPEN, type MessageRegistry } from './registry';
 import { tr } from '../../shared/i18n';
 
 const ITEM = /^\/api\/messages\/([^/]+)$/;
 const COMMANDS = /^\/api\/messages\/commands\/([^/]+)$/;
+const FILES = /^\/api\/messages\/files\/([^/]+)$/;
+/** Tamanho máximo do texto buscado depois do `@`. */
+const QUERY_MAX = 200;
+
+/** Quem lista os arquivos de uma pasta de projeto (deliveries/fetcher.ts); sem ele, o `@` não lista nada. */
+export type ProjectLister = (root: string) => Promise<ListResult>;
 
 function methodNotAllowed(res: ServerResponse, allow: string): void {
   res.setHeader('Allow', allow);
@@ -32,7 +43,17 @@ function fail(res: ServerResponse, err: unknown): void {
   else sendJson(res, 500, { error: tr('erro interno') });
 }
 
-export function createMessageRoutes(registry: MessageRegistry): (req: IncomingMessage, res: ServerResponse, path: string) => void {
+export function createMessageRoutes(registry: MessageRegistry, listFiles?: ProjectLister): (req: IncomingMessage, res: ServerResponse, path: string) => void {
+  const files = async (req: IncomingMessage, res: ServerResponse, agentId: string) => {
+    const root = registry.projectOf(agentId);
+    if (!root) return sendJson(res, 404, { error: tr('agente desconhecido: ele já saiu do escritório?') });
+    if (!listFiles) return sendJson(res, 503, { error: tr('arquivos desligados') });
+    const listed = await listFiles(root);
+    if ('error' in listed) return sendJson(res, listed.status, { error: listed.error });
+    const q = (new URL(req.url ?? '/', 'http://x').searchParams.get('q') ?? '').slice(0, QUERY_MAX);
+    sendJson(res, 200, { files: rankFiles(listed.files, q), truncated: listed.truncated });
+  };
+
   const send = async (req: IncomingMessage, res: ServerResponse) => {
     const r = registry.send(await readJson(req));
     if ('message' in r) return sendJson(res, 201, r.message);
@@ -78,7 +99,8 @@ export function createMessageRoutes(registry: MessageRegistry): (req: IncomingMe
     if (path === '/api/codex/bridge/poll') return post(req, res, codexPoll);
     if (path === '/api/codex/bridge/ack') return post(req, res, codexAck);
     const commands = COMMANDS.exec(path);
-    const m = commands ?? ITEM.exec(path);
+    const listing = FILES.exec(path);
+    const m = commands ?? listing ?? ITEM.exec(path);
     if (!m) return sendJson(res, 404, { error: tr('rota desconhecida') });
     const method = req.method ?? 'GET';
     if (method !== 'GET' && method !== 'HEAD') return methodNotAllowed(res, 'GET');
@@ -89,6 +111,7 @@ export function createMessageRoutes(registry: MessageRegistry): (req: IncomingMe
       return sendJson(res, 400, { error: tr('id inválido') });
     }
     if (commands) return sendJson(res, 200, { commands: registry.commandsOf(id) });
+    if (listing) return void files(req, res, id).catch((err) => fail(res, err));
     const msg = registry.get(id);
     if (msg) sendJson(res, 200, msg);
     else sendJson(res, 404, { error: tr('mensagem desconhecida: ela já foi resolvida há mais de 10 min ou o Habblaud reiniciou') });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FileFetcher, HOST_PRESENCE_MS } from './fetcher';
+import { FileFetcher, HOST_PRESENCE_MS, LIST_FRESH_MS } from './fetcher';
 
 const ok = (p: string) => ({ path: p, size: 3 });
 
@@ -52,5 +52,39 @@ describe('FileFetcher', () => {
     expect(list).toEqual([{ id: expect.any(String), path: '/proj/a.png' }]);
     f.ack({ results: [{ id: list[0].id, ok: true, data: Buffer.from('png').toString('base64') }] });
     await expect(got).resolves.toEqual({ data: Buffer.from('png') });
+  });
+
+  it('lista de arquivos de um projeto, Node: o servidor lista e a lista vale 30 s', async () => {
+    let now = 1_000;
+    let calls = 0;
+    const f = new FileFetcher({ direct: true, now: () => now, listFiles: () => (calls++, { files: ['a.ts', 'b.ts'], truncated: false }) });
+    expect(await f.list('/p')).toEqual({ files: ['a.ts', 'b.ts'], truncated: false });
+    await f.list('/p');
+    expect(calls).toBe(1);
+    now += LIST_FRESH_MS;
+    await f.list('/p');
+    expect(calls).toBe(2);
+    const bad = new FileFetcher({ direct: true, listFiles: () => ({ error: 'pasta do projeto não encontrada' }) });
+    expect(await bad.list('/x')).toEqual({ error: 'pasta do projeto não encontrada', status: 404 });
+  });
+
+  it('lista de arquivos, Docker: vai pelo auxiliar na mesma rodada (list: true); a resposta é conferida de novo', async () => {
+    const f = new FileFetcher({ mapHostPath: () => undefined });
+    expect(await f.list('/p')).toMatchObject({ status: 503 });
+    f.poll();
+    const first = f.list('/p');
+    // Pedida de novo no meio: é a mesma listagem, um pedido só ao auxiliar.
+    const second = f.list('/p');
+    const reqs = f.poll();
+    expect(reqs).toEqual([{ id: expect.any(String), path: '/p', list: true }]);
+    f.ack({ results: [{ id: reqs[0].id, ok: true, files: ['src/a.ts', '.env', '/etc/passwd', 7, '', 'README.md'], truncated: true }] });
+    expect(await first).toEqual({ files: ['src/a.ts', 'README.md'], truncated: true });
+    expect(await second).toEqual({ files: ['src/a.ts', 'README.md'], truncated: true });
+    expect(f.poll()).toEqual([]);
+
+    const other = f.list('/q');
+    const [req] = f.poll();
+    f.ack({ results: [{ id: req.id, ok: false, error: 'fora das pastas de projeto conhecidas' }] });
+    expect(await other).toEqual({ error: 'fora das pastas de projeto conhecidas', status: 404 });
   });
 });

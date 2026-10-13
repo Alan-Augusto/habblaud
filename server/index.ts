@@ -293,7 +293,7 @@ const api = createApiHandler({
   sessions: history,
   timeline: createTimelineHandler({ dir: timelineDir, recording: !!timeline }),
   permissions: permissions ? createPermissionRoutes(permissions) : undefined,
-  messages: messages ? createMessageRoutes(messages) : undefined,
+  messages: messages ? createMessageRoutes(messages, deliveryFiles ? (root) => deliveryFiles.list(root) : undefined) : undefined,
   pty: ptys ? createPtyRoutes(ptys) : undefined,
   spawn,
   attachments,

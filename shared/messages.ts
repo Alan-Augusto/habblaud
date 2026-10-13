@@ -105,3 +105,35 @@ export function panelCommandReason(text: string, source?: SessionCommand['source
   }
   return undefined;
 }
+
+// ---------------------------------------------------------------- arquivos citados com `@`
+
+/** Quantos arquivos o menu do `@` recebe por busca. */
+export const FILE_MATCHES_MAX = 50;
+
+const foldPath = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** As letras de `q` aparecem em `s`, nessa ordem (busca aproximada: "cmpts" casa com "composer.ts"). */
+function subsequence(s: string, q: string): boolean {
+  let i = 0;
+  for (let k = 0; k < s.length && i < q.length; k++) if (s[k] === q[i]) i++;
+  return i === q.length;
+}
+
+/**
+ * Os arquivos que casam com o que foi digitado depois do `@`, sem diferenciar maiúsculas nem acentos, do melhor para o
+ * pior: o nome do arquivo começa assim; o nome tem o trecho; o caminho tem o trecho; as letras aparecem no caminho
+ * nessa ordem. No empate, o caminho mais curto e depois a ordem alfabética. Sem nada digitado, os mais rasos.
+ */
+export function rankFiles(files: readonly string[], query: string, limit = FILE_MATCHES_MAX): string[] {
+  const q = foldPath(query);
+  const scored: Array<{ path: string; rank: number }> = [];
+  for (const path of files) {
+    const p = foldPath(path);
+    const name = p.slice(p.lastIndexOf('/') + 1);
+    const rank = !q ? p.split('/').length : name.startsWith(q) ? 0 : name.includes(q) ? 1 : p.includes(q) ? 2 : subsequence(p, q) ? 3 : -1;
+    if (rank >= 0) scored.push({ path, rank });
+  }
+  scored.sort((a, b) => a.rank - b.rank || a.path.length - b.path.length || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return scored.slice(0, limit).map((x) => x.path);
+}

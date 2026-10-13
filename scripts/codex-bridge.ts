@@ -17,7 +17,7 @@
 // Arquivos e ditado usam rodadas com espera: o Habblaud só responde quando chega trabalho (ou a cada 20 s).
 // Ctrl+C para parar.
 import { statSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isClaudeDir } from '../server/accounts/detect';
 import { createCodexQueueRunner, findCodexBin, THREAD_ID, type CodexQueueResult, type CodexQueueRunner } from '../server/messages/codex';
@@ -27,6 +27,7 @@ import { runnableClaudeBin } from '../server/claude-bin';
 import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_SPAWN, attachmentsRoot, promptWithAttachments, safeFileName, writeAttachments, type Attachment } from '../server/spawn/attachments';
 import { createWhisperTranscriber, findWhisper, type Transcriber } from '../server/dictation/whisper';
 import { checkFile, insideKnownFolder, tempRoots } from '../server/deliveries/files';
+import { listProjectFiles } from '../server/deliveries/project-files';
 import { discoverClaudeDirs } from '../server/accounts/detect';
 import { HOST_WAIT_MS } from '../server/host-wait';
 import { readFileSync } from 'node:fs';
@@ -286,24 +287,35 @@ export async function dictationRound(post: Post, transcribe: Transcriber, log: (
 /**
  * Arquivos das entregas: busca os caminhos pedidos (POST /api/host/files/poll), confere cada um com checkFile (tipo de
  * ver, nada com cara de segredo, até 25 MB, links resolvidos) e com `inside` (pastas que pode ler) e devolve o conteúdo
- * em /api/host/files/ack. Nunca lança.
+ * em /api/host/files/ack. Um pedido com `list: true` é uma pasta de projeto para listar (o `@` da caixa de mensagem):
+ * só as que `knownProject` aceita, e volta a lista de caminhos (deliveries/project-files.ts), sem ler arquivo nenhum.
+ * Nunca lança.
  */
 export async function filesRound(
   post: Post,
   log: (line: string) => void = () => {},
   read: (p: string) => Buffer = readFileSync,
   check: typeof checkFile = checkFile,
-  opts: { inside?: (realPath: string) => boolean; wait?: boolean } = {},
+  opts: { inside?: (realPath: string) => boolean; wait?: boolean; knownProject?: (root: string) => boolean; list?: typeof listProjectFiles } = {},
 ): Promise<RoundResult> {
   const polled = await post(`/api/host/files/poll${opts.wait ? '?wait=1' : ''}`, {});
   if (!polled) return { state: 'down' };
   const list = rec(polled.json)?.files;
   if (polled.status !== 200 || !Array.isArray(list)) return { state: 'refused', status: polled.status };
-  const results: Array<BridgeResult & { data?: string }> = [];
+  const results: Array<BridgeResult & { data?: string; files?: string[]; truncated?: boolean }> = [];
   for (const raw of list) {
     const r = rec(raw);
     const id = typeof r?.id === 'string' ? r.id : '';
     if (!id) continue;
+    if (r?.list === true) {
+      const root = typeof r.path === 'string' ? r.path : '';
+      const listed = opts.knownProject && !opts.knownProject(root) ? { error: tr('fora das pastas de projeto conhecidas') } : (opts.list ?? listProjectFiles)(root);
+      if ('error' in listed) {
+        results.push({ id, ok: false, error: listed.error });
+        log(tr('✗ lista de arquivos recusada: {0}', [listed.error]));
+      } else results.push({ id, ok: true, files: listed.files, truncated: listed.truncated });
+      continue;
+    }
     const checked = check(typeof r?.path === 'string' ? r.path : '');
     const c = 'error' in checked || !opts.inside || opts.inside(checked.path) ? checked : { error: tr('fora das pastas de projeto conhecidas') };
     if ('error' in c) {
@@ -363,7 +375,9 @@ async function main(): Promise<void> {
     const accountDirs = discoverClaudeDirs(process.env);
     const roots = [...tempRoots(), attachmentsRoot()];
     const inside = (p: string) => insideKnownFolder(p, { accountDirs, roots });
-    void waitLoop(() => filesRound(waitPost, log, undefined, undefined, { inside, wait: true }));
+    // Uma pasta só é listada se for (ou estiver dentro de) um projeto que alguma conta conhece.
+    const knownProject = (root: string) => insideKnownFolder(join(root, 'x'), { accountDirs, roots: [] });
+    void waitLoop(() => filesRound(waitPost, log, undefined, undefined, { inside, wait: true, knownProject }));
     if (transcribe) {
       const t = transcribe;
       void waitLoop(() => dictationRound(waitPost, t, log, { wait: true }));
