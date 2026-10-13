@@ -10,6 +10,12 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Corrigido
+
+- No timelapse, os avisos do canto ficam acima da barra de reprodução, em vez de cobrir a linha do tempo e os botões.
+- Com muitas contas ou a janela estreita, os cartões de uso vão para uma segunda linha da barra superior, em vez de
+  cobrir os botões da direita (zoom, Meu dia, Configurações, Ajuda).
+
 ## [0.10.0] - 2026-10-13
 
 Para atualizar: `git pull` e `npm run docker:up`. A interface segue o idioma do navegador (ou Configurações › Idioma).

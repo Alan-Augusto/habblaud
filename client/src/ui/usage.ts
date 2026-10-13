@@ -222,8 +222,17 @@ export class UsageCards {
     this.list.sync(accounts);
     this.el.classList.toggle('is-empty', accounts.length === 0);
     setStyleVar(this.el, '--count', String(accounts.length));
-    this.fit();
+    // Medir força o layout da página, e o render roda a cada quadro no replay: só quando as contas mudam (a largura da
+    // janela fica com o ResizeObserver do construtor).
+    const key = accounts.map((a) => a.id).join('|');
+    if (key !== this.fitKey) {
+      this.fitKey = key;
+      this.fit();
+    }
   }
+
+  /** Contas da última medida em fit() (ver render). */
+  private fitKey = '';
 
   /**
    * Os cartões não cabem na linha da barra (muitas contas ou janela estreita)? Então vão para uma segunda linha
