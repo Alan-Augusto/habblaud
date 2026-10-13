@@ -41,6 +41,7 @@ import {
 import { isLocalHostname, PermissionCard } from './permission';
 import { canRenameRoom } from './roomrename';
 import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, providerOf } from './provider';
+import { ptyControllable } from './ptyapi';
 import { createAgentRow, updateAgentRow } from './rows';
 import { SocialSection } from './social';
 import { TERMINAL_UNAVAILABLE_HINT, type TerminalControl } from './terminal';
@@ -634,7 +635,7 @@ class AgentView {
     const open = (router ? router.openAgentId : this.terminal.agentId) === this.id;
     // Interativo: o Claude Code roda aqui (pty) ou roda noutro terminal e dá para assumir pela janela.
     const readOnly = !!this.ctx.store.snapshot?.meta.terminal;
-    const kind = !this.id ? '' : router?.interactive(this.id) ? 'interativo' : !readOnly && this.pty.enabled && this.last?.kind === 'main' ? 'em outro terminal' : 'ao vivo';
+    const kind = !this.id ? '' : router?.interactive(this.id) ? 'interativo' : !readOnly && this.pty.enabled && ptyControllable(this.last) ? 'em outro terminal' : 'ao vivo';
     setText(this.termRo, kind);
     // aria-disabled (e não disabled): o botão continua focável e a dica do porquê aparece no hover.
     const enabled = open || (available && live);
@@ -654,7 +655,7 @@ class AgentView {
           : !live
             ? 'O agente já saiu do escritório.'
             : kind === 'ao vivo'
-              ? `Ver a conversa desta sessão como no ${provider === 'codex' ? 'Codex' : 'terminal do Claude Code'}, ao vivo${this.pty.enabled && this.last?.kind === 'main' ? '; "Assumir daqui" continua nela aqui' : ''} (T)`
+              ? `Ver a conversa desta sessão como no ${provider === 'codex' ? 'Codex' : 'terminal do Claude Code'}, ao vivo${this.pty.enabled && ptyControllable(this.last) ? '; "Assumir daqui" continua nela aqui' : ''} (T)`
               : kind === 'interativo'
                 ? 'Abrir o terminal desta sessão, que roda aqui no Habblaud (T)'
                 : 'Abrir o terminal: a sessão roda em outro terminal; dá para assumir daqui (T)',
@@ -829,7 +830,8 @@ class RoomView {
   private newSession(): void {
     const r = this.last;
     if (!r) return;
-    const account = (this.ctx.store.snapshot?.agents ?? []).find((a) => a.roomId === r.id && a.kind === 'main')?.account;
+    // Só conta do Claude Code (nem Codex nem demo); sem nenhuma na sala, o servidor usa a padrão.
+    const account = (this.ctx.store.snapshot?.agents ?? []).find((a) => a.roomId === r.id && ptyControllable(a))?.account;
     setHidden(this.newMsg, true);
     this.pty.newSession(r.path, account).catch((err: Error) => {
       setText(this.newMsg, `Não deu: ${err.message}`);

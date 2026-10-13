@@ -1,5 +1,15 @@
 // Chamadas à API do terminal interativo (server/http/pty.ts). Erros viram Error com a mensagem do servidor.
-import type { PtyInfo } from '../../../shared/types';
+import { isDemoId } from '../../../shared/timeline';
+import type { AgentInfo, PtyInfo } from '../../../shared/types';
+import { providerOf } from './provider';
+
+/**
+ * Dá para encerrar ou assumir este agente pelo escritório? Só o agente principal de uma sessão do Claude Code: o
+ * Codex não tem registro de sessões nem `--resume` aqui, e os agentes do demo não existem de verdade.
+ */
+export function ptyControllable(a: Pick<AgentInfo, 'id' | 'kind' | 'provider'> | null | undefined): boolean {
+  return !!a && a.kind === 'main' && providerOf(a) === 'claude' && !isDemoId(a.id);
+}
 
 export async function postPty<T = unknown>(url: string, body: unknown): Promise<T | undefined> {
   let res: Response;

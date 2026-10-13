@@ -4,13 +4,15 @@
 // os desliga e o Windows Terminal passa a mandar eventos de mouse/foco para o shell como texto.
 // Por isso um PowerShell auxiliar se liga ao console da sessão (AttachConsole), encerra o processo e escreve
 // nesse console as sequências que desligam esses modos, e devolve o modo de entrada do console ao normal.
+// Antes de encerrar, o auxiliar confere que o PID ainda é o mesmo processo (início exato, FILETIME): um PID
+// reaproveitado por outro programa não é encerrado.
 import { execFile } from 'node:child_process';
 
 /** Desliga o que o Claude Code liga: mouse, foco, colagem, teclado (kitty e win32-input), tela alternativa. */
 export const TERMINAL_RESET =
   '\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1004l\x1b[?2004l\x1b[?2031l\x1b[?9001l\x1b[<u\x1b[>4;0m\x1b[?25h\x1b[0m\r\n';
 
-function script(pid: number): string {
+function script(pid: number, fileTime: string): string {
   const reset = [...TERMINAL_RESET].map((c) => `[char]${c.charCodeAt(0)}`).join('+');
   return `
 $ErrorActionPreference = 'Stop'
@@ -26,6 +28,8 @@ public static class HabblaudConsole {
   [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
 }
 "@
+$target = Get-Process -Id ${pid} -ErrorAction SilentlyContinue
+if (-not $target -or $target.StartTime.ToFileTimeUtc() -ne ${fileTime}) { exit 4 }
 [HabblaudConsole]::FreeConsole() | Out-Null
 $attached = [HabblaudConsole]::AttachConsole(${pid})
 Stop-Process -Id ${pid} -Force
@@ -50,25 +54,27 @@ if ([HabblaudConsole]::GetConsoleMode($in, [ref]$m)) {
 }
 
 /**
- * Encerra `pid` e limpa os modos do terminal dele. Se o auxiliar falhar antes de encerrar, encerra direto
- * (o terminal pode ficar com os modos ligados, como antes).
+ * Encerra `pid` (só se ele ainda começou em `fileTime`) e limpa os modos do terminal dele. Se o auxiliar falhar
+ * antes de encerrar, encerra direto, desde que `stillSame` confirme de novo que é o mesmo processo (o terminal
+ * pode ficar com os modos ligados, como antes).
  */
-export function killWithConsoleReset(pid: number, timeoutMs = 15_000): Promise<void> {
+export function killWithConsoleReset(pid: number, fileTime: string, stillSame: () => Promise<boolean>, timeoutMs = 15_000): Promise<void> {
   if (!Number.isSafeInteger(pid) || pid <= 0) return Promise.reject(new Error('pid inválido'));
-  const encoded = Buffer.from(script(pid), 'utf16le').toString('base64');
-  return new Promise((ok) => {
+  if (!/^\d+$/.test(fileTime)) return Promise.reject(new Error('início do processo desconhecido'));
+  const encoded = Buffer.from(script(pid, fileTime), 'utf16le').toString('base64');
+  return new Promise((ok, fail) => {
     execFile(
       'powershell.exe',
       ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
       { windowsHide: true, timeout: timeoutMs },
-      () => {
-        try {
-          process.kill(pid, 0);
-          process.kill(pid);
-        } catch {
-          // já encerrado (o normal)
-        }
-        ok();
+      (err) => {
+        if ((err as { code?: unknown } | null)?.code === 4) return fail(new Error('o processo não é mais aquela sessão'));
+        void stillSame()
+          .then((same) => {
+            if (same) process.kill(pid);
+          })
+          .catch(() => undefined)
+          .finally(ok);
       },
     );
   });

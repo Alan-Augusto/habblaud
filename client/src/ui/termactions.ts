@@ -5,6 +5,7 @@ import type { AgentInfo } from '../../../shared/types';
 import type { UiContext } from './context';
 import { h, setHidden, setText, setTitle } from './dom';
 import type { PtyControl } from './pty';
+import { ptyControllable } from './ptyapi';
 
 const CONFIRM_MS = 4000;
 
@@ -43,7 +44,7 @@ export class TermActions {
       this.showMsg('');
     }
     this.agent = agent;
-    const usable = !!agent && agent.kind === 'main' && !agent.id.startsWith('demo:') && this.pty.enabled;
+    const usable = ptyControllable(agent) && this.pty.enabled;
     setHidden(this.el, !usable);
     if (!usable) return;
     setHidden(this.takeBtn, !this.withTakeover);

@@ -6,7 +6,7 @@ import http from 'node:http';
 import { join } from 'node:path';
 import { codexDirsRefused } from './accounts/detect';
 import { AccountsService } from './accounts/service';
-import { loadConfig, messagesOffReason, terminalOffReason } from './config';
+import { isTruthy, loadConfig, messagesOffReason, terminalOffReason } from './config';
 import { createApiHandler, sendJson } from './http/app';
 import { createRequestGuard } from './http/guard';
 import { Hub } from './http/sse';
@@ -22,7 +22,8 @@ import { Office } from './model/office';
 import { RoomAliases } from './model/room-aliases';
 import { isDefaultDir } from './accounts/detect';
 import { createPtyRoutes } from './http/pty';
-import { findExecutable, loadPty, PtyManager, type SpawnPty } from './pty/manager';
+import { findExecutable, loadPty, PtyManager, type ScreenFactory, type SpawnPty } from './pty/manager';
+import { loadHeadlessScreen } from './pty/screen';
 import { openMainAgent, SessionHistory } from './sources/history';
 import { HistorySet, SourceSet } from './sources/source';
 import { createPermissionRoutes } from './permissions/http';
@@ -155,12 +156,14 @@ const messages = config.messages
   : undefined;
 late.messages = messages;
 
-// Terminal interativo (abrir/assumir sessões e encerrar agentes): só com bind local, fora do Docker, com
-// node-pty e o executável do claude no PATH. HABBLAUD_PTY=0 desliga.
+// Terminal interativo (abrir/assumir sessões e encerrar agentes): opt-in com HABBLAUD_PTY=1 (aceita os mesmos
+// valores do HABBLAUD_TERMINAL), só com bind local, fora do Docker, com node-pty e o executável do claude no PATH.
 const claudeBin = process.env.HABBLAUD_CLAUDE_BIN?.trim() || findExecutable('claude');
 let spawnPty: SpawnPty | null = null;
+let ptyScreen: ScreenFactory | undefined;
 let ptyOff: string | undefined;
-if (/^(0|false|no|off)$/i.test(process.env.HABBLAUD_PTY?.trim() ?? '')) ptyOff = 'desligado por HABBLAUD_PTY=0';
+const ptyFlag = process.env.HABBLAUD_PTY?.trim();
+if (!isTruthy(ptyFlag)) ptyOff = ptyFlag ? `desligado por HABBLAUD_PTY=${ptyFlag}` : 'desligado (ligue com HABBLAUD_PTY=1)';
 else if (config.inDocker) ptyOff = 'indisponível no Docker (rode com npm start)';
 else if (!config.terminal) ptyOff = `mesma trava do terminal (${terminalOffReason(process.env, config.host, config.inDocker)})`;
 else if (!claudeBin) ptyOff = 'executável "claude" não encontrado no PATH (defina HABBLAUD_CLAUDE_BIN)';
@@ -168,6 +171,11 @@ else {
   const loaded = await loadPty();
   spawnPty = loaded.spawn;
   ptyOff = loaded.reason;
+  if (spawnPty) {
+    const screen = await loadHeadlessScreen();
+    ptyScreen = screen.create ?? undefined;
+    if (screen.reason) log.warn(`Terminal interativo sem a tela completa (${screen.reason}): ao reconectar, modos como a colagem entre colchetes podem se perder.`);
+  }
 }
 const ptys = spawnPty
   ? new PtyManager({
@@ -179,6 +187,7 @@ const ptys = spawnPty
         return a && { id: a.id, kind: a.kind, account: a.account, sessionId: a.sessionId, cwd: office.roomPath(a.roomId) };
       },
       onChange: () => office.markDirty(),
+      createScreen: ptyScreen,
     })
   : undefined;
 late.ptys = ptys;

@@ -7,7 +7,7 @@ import type { UiContext } from './context';
 import { moveAgent, orderAgents } from './agentorder';
 import { h, KeyedList, setAttr, setHidden, setText, setTitle } from './dom';
 import { activityFallback } from './model';
-import { stopAgent } from './ptyapi';
+import { ptyControllable, stopAgent } from './ptyapi';
 
 /** Quanto tempo o X fica pedindo confirmação. */
 const CONFIRM_MS = 3000;
@@ -78,7 +78,7 @@ export class TermTabs {
         setHidden(b.children[3] as HTMLElement, !live);
         const close = b.children[4] as HTMLElement;
         const confirm = this.confirming === a.id;
-        setHidden(close, !ctx.terminals?.interactiveEnabled);
+        setHidden(close, !ctx.terminals?.interactiveEnabled || !ptyControllable(a));
         close.classList.toggle('is-confirm', confirm);
         setText(close, confirm ? 'encerrar?' : '×');
         setTitle(close, confirm ? 'Clique de novo para encerrar a sessão (a conversa fica salva)' : 'Encerrar esta sessão');
@@ -109,7 +109,7 @@ ${doing}` : ''}${live ? ' (interativo)' : ''}`);
 
   /** X da aba: o primeiro clique pede confirmação; o segundo encerra a sessão (aqui ou noutro terminal). */
   private closeTab(id: string): void {
-    if (!this.ctx.terminals?.interactiveEnabled) return;
+    if (!this.ctx.terminals?.interactiveEnabled || !ptyControllable(this.ctx.agent(id))) return;
     if (this.confirming !== id) {
       this.resetConfirm();
       this.confirming = id;

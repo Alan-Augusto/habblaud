@@ -45,7 +45,7 @@ export interface ApiDeps {
   messages?: (req: IncomingMessage, res: ServerResponse, path: string) => void;
   /**
    * Terminal interativo e ações nos agentes (/api/pty/*, POST /api/agents/:id/stop|takeover; http/pty.ts).
-   * Ausente = desligado (Docker, sem node-pty, HABBLAUD_PTY=0 ou sem bind local).
+   * Ausente = desligado (sem HABBLAUD_PTY=1, Docker, sem node-pty ou sem bind local).
    */
   pty?: (req: IncomingMessage, res: ServerResponse, path: string) => void;
   /**
