@@ -1928,7 +1928,6 @@ export const EN: Readonly<Record<string, string>> = {
   "(sem título)": "(untitled)",
   "TodoWrite({0}/{1} concluídas)": "TodoWrite({0}/{1} done)",
   "Resumo da conversa compactada": "Compacted conversation summary",
-  "Saída de {0}": "Output of {0}",
   "Saída do comando": "Command output",
   "Notificação de tarefa em segundo plano": "Background task notification",
   "Tarefa em segundo plano concluída": "Background task completed",

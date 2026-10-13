@@ -9,7 +9,7 @@
 // - um prompt digitado com o agente ocupado chega como attachment `queued_command` (commandMode
 //   'prompt'), não como linha user; notificações de tarefas em segundo plano chegam como linha user ou
 //   como attachment `queued_command` (as linhas queue-operation são só a fila e são ignoradas);
-// - comandos de barra locais e a saída deles vêm em linhas system `local_command`;
+// - comandos de barra locais e a saída deles vêm em linhas system `local_command` (a saída vira uma resposta);
 // - erros da API: uma linha system `api_error` por tentativa e, quando o Claude Code desiste, uma
 //   mensagem sintética do assistant com `isApiErrorMessage`.
 import type { TerminalEntry, TerminalInputKind } from '../../shared/types';
@@ -27,6 +27,8 @@ export interface TerminalParser {
 /** Prompts do usuário e respostas do agente. */
 export const TEXT_MAX = 20_000;
 export const THINKING_MAX = 8_000;
+/** Cada linha da saída de um comando de barra. */
+export const COMMAND_LINE_MAX = 400;
 /** Argumentos de uma ferramenta (comando, diff, JSON...). */
 export const INPUT_MAX = 2_000;
 /** Resultado de uma ferramenta: caracteres e linhas (o que passar disso vem com `truncated`). */
@@ -151,6 +153,14 @@ export function oneLine(raw: string, max: number, reminders = true): string {
   const line = truncate(lines[i], max);
   const more = cut || lines.slice(i + 1).some((l) => l.trim());
   return more && !line.endsWith('…') ? `${line} …` : line;
+}
+
+/** Saída de um comando de barra: uma linha comprida demais (o comando de um hook, por exemplo) é encurtada. */
+function shortLines(raw: string): string {
+  return raw
+    .split('\n')
+    .map((l) => (l.length > COMMAND_LINE_MAX ? `${l.slice(0, COMMAND_LINE_MAX).trimEnd()}…` : l))
+    .join('\n');
 }
 
 /** Uma linha para o `text` de uma entrada 'system' e, se ela perdeu informação, o texto todo no `detail`. */
@@ -396,8 +406,6 @@ class Parser implements TerminalParser {
   private readonly seen = new Set<string>();
   /** Blocos de texto/thinking já vistos por mensagem (uma mensagem repetida não duplica entradas). */
   private readonly msgBlocks = new Map<string, Set<string>>();
-  /** Último comando de barra (para rotular a saída que vem na linha seguinte). */
-  private lastCommand?: string;
   /**
    * Transcript de um fork: começa com 'fork-context-ref', a CÓPIA da chamada Agent do pai e o resultado
    * dela junto com a instrução do fork (depois do bloco <fork-boilerplate>). A cópia não é do fork.
@@ -535,7 +543,6 @@ class Parser implements TerminalParser {
         const name = inner(text, 'command-name')?.trim() || (msg ? `/${msg}` : undefined);
         if (!name) return;
         const cmd = name.startsWith('/') ? name : `/${name}`;
-        this.lastCommand = cmd;
         this.userEntry(c, `${cmd} ${inner(text, 'command-args')?.trim() ?? ''}`.trim());
         return;
       }
@@ -546,7 +553,9 @@ class Parser implements TerminalParser {
         const out = OUTPUT_TAGS.map((t) => inner(text, t)?.trim())
           .filter(Boolean)
           .join('\n');
-        if (out) this.sys(c, this.lastCommand ? tr('Saída de {0}', [this.lastCommand]) : tr('Saída do comando'), { detail: out });
+        // Vira uma resposta comum (aparece em todos os filtros, sem "detalhes"): é como o Claude Code a mostra.
+        const reply = marked(prepare(shortLines(out), TEXT_MAX));
+        if (reply) this.emit({ kind: 'assistant', id: `${c.uuid}:o`, at: c.at, text: reply });
         return;
       }
       case 'bash-input': {

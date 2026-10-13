@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TerminalEntry } from '../../shared/types';
 import { L } from '../test/fixtures';
-import { createTerminalParser, DETAIL_MAX, INPUT_MAX, RESULT_MAX, RESULT_MAX_LINES, TEXT_MAX, THINKING_MAX } from './terminal';
+import { createTerminalParser, COMMAND_LINE_MAX, DETAIL_MAX, INPUT_MAX, RESULT_MAX, RESULT_MAX_LINES, TEXT_MAX, THINKING_MAX } from './terminal';
 
 const T0 = Date.parse('2026-10-06T10:00:00Z');
 // Token falso montado em partes (nada de segredo literal no repositório).
@@ -53,7 +53,7 @@ describe('terminal — prompts do usuário', () => {
     expect(only(e, 'user').map((x) => x.text)).toEqual(['olha isso\n[imagem] [imagem]', '[Image #1] quero assim', '[imagem]']);
   });
 
-  it('comandos de barra viram "/x args" e a saída local vira system (inclusive nas linhas system local_command)', () => {
+  it('comandos de barra viram "/x args" e a saída local vira uma resposta (inclusive nas linhas system local_command)', () => {
     const e = run([
       L.prompt('<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>123</command-args>'),
       L.prompt('<local-command-stdout>\x1b[1mRevisão pronta\x1b[22m</local-command-stdout>'),
@@ -61,12 +61,21 @@ describe('terminal — prompts do usuário', () => {
       L.system('local_command', { content: '<local-command-stdout>Modelo mantido</local-command-stdout>', level: 'info' }),
       L.system('local_command', { content: '<local-command-stdout></local-command-stdout>', level: 'info' }),
     ]);
-    expect(e.map((x) => [x.kind, x.kind === 'system' ? `${x.text} | ${x.detail}` : 'text' in x ? x.text : ''])).toEqual([
+    expect(e.map((x) => [x.kind, 'text' in x ? x.text : ''])).toEqual([
       ['user', '/review 123'],
-      ['system', 'Saída de /review | Revisão pronta'],
+      ['assistant', 'Revisão pronta'],
       ['user', '/model'],
-      ['system', 'Saída de /model | Modelo mantido'],
+      ['assistant', 'Modelo mantido'],
     ]);
+  });
+
+  it('saída de comando de barra: as quebras de linha ficam e a linha comprida demais é encurtada', () => {
+    const hook = `PostCompact [${'x'.repeat(COMMAND_LINE_MAX * 2)}] completed successfully: {}`;
+    const e = run([L.prompt('<command-name>/compact</command-name>'), L.prompt(`<local-command-stdout>\x1b[2mCompacted\x1b[22m\n${hook}</local-command-stdout>`)]);
+    const lines = only(e, 'assistant')[0].text.split('\n');
+    expect(lines[0]).toBe('Compacted');
+    expect(lines[1]).toHaveLength(COMMAND_LINE_MAX + 1);
+    expect(lines[1].endsWith('…')).toBe(true);
   });
 
   it('modo bash do usuário: "! cmd" e a saída como system', () => {

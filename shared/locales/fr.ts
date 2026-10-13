@@ -1743,7 +1743,6 @@ export const FR: Readonly<Record<string, string>> = {
   "(sem título)": "(sans titre)",
   "TodoWrite({0}/{1} concluídas)": "TodoWrite({0}/{1} terminées)",
   "Resumo da conversa compactada": "Résumé de la conversation compactée",
-  "Saída de {0}": "Sortie de {0}",
   "Saída do comando": "Sortie de la commande",
   "Notificação de tarefa em segundo plano": "Notification de tâche en arrière-plan",
   "Tarefa em segundo plano concluída": "Tâche en arrière-plan terminée",
