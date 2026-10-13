@@ -40,6 +40,7 @@ do meio (0.**3**.0).
   ia ficando mais lenta. Uma linha acima de 8 MB agora é ignorada, e o Habblaud segue na linha seguinte.
 - Sessões do Codex revertidas passam a mostrar o turno atual no escritório e no terminal, mesmo quando o arquivo da conversa anterior continua no disco.
 - No timelapse, a linha do tempo do agente deixa de mostrar o que aconteceu depois do momento reproduzido quando se volta no tempo. Uma resposta de histórico que ainda estava a caminho também não entra durante o replay.
+- No timelapse, os tempos dos painéis acompanham a reprodução e ficam parados ao pausar, junto com o escritório e o selo do replay.
 
 ## [0.8.0] - 2026-10-09
 
