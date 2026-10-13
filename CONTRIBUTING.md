@@ -42,7 +42,8 @@ Use o caminho do plugin alterado (`mod/habblaud-permissoes` ou `mod/habblaud-men
 
 - Use um título claro e explique o problema, a mudança e como ela foi verificada.
 - Referencie a issue relacionada, se houver.
-- Para mudanças visuais, inclua uma captura de tela ou um GIF, se ajudar a mostrar o resultado.
+- Para mudanças visuais, inclua uma captura de tela ou um GIF, se ajudar a mostrar o resultado. Faça as capturas no
+  modo demonstração (`?mock=1` na URL ou `npm run demo`), que mostra só agentes fictícios.
 - Atualize a seção **Não lançado** do `CHANGELOG.md` quando a mudança trouxer algo visível para quem usa o Habblaud.
 - Não inclua dados pessoais, credenciais ou conteúdo privado de sessões em capturas, exemplos ou logs.
 
