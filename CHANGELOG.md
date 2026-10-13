@@ -17,6 +17,7 @@ do meio (0.**3**.0).
   cobrir os botões da direita (zoom, Meu dia, Configurações, Ajuda).
 - No celular estreito (até uns 414 px), a barra superior não corta mais o logo e o botão do painel lateral: os
   contadores descem para a linha dos cartões de uso.
+- "Meu dia" no celular: o seletor Demonstração | Dados reais não sai mais da tela (em francês, nem a 390 px).
 - Dois pedidos de permissão do mesmo agente no mesmo instante: o detalhe do mais novo não diz mais que há outro
   pedido esperando atrás dele.
 - "Meu dia": o limite de 1.000 esperas por dia vale também quando todas estão abertas (antes a lista e o arquivo do
