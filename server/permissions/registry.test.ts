@@ -147,6 +147,14 @@ describe('PermissionRegistry: registro', () => {
     expect(snapAgent(office, MAIN)!.permission!.queued).toBeUndefined();
   });
 
+  it('pedidos do mesmo agente no mesmo milissegundo: só o primeiro tem outros esperando', () => {
+    const { registry } = setup();
+    const first = registered(registry.register(hookInput()));
+    const second = registered(registry.register(hookInput({ tool_input: { command: 'npm run build' } }))); // sem avançar o relógio
+    expect(registry.detail(first)!.queued).toBe(1);
+    expect(registry.detail(second)!.queued).toBeUndefined();
+  });
+
   it('limite de pedidos abertos', () => {
     const { office } = setup();
     const r = new PermissionRegistry({ office, viewers: () => 1, maxPending: 2 });

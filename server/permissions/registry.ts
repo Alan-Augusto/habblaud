@@ -585,8 +585,14 @@ export class PermissionRegistry {
   }
 
   private queueOf(p: Pending): { queued?: number } {
+    // Pela ordem de chegada (a do Map), não pelo createdAt: dois pedidos no mesmo milissegundo empatariam e cada
+    // um contaria o outro como "atrás dele".
     let n = 0;
-    for (const o of this.pending.values()) if (o !== p && !o.outcome && o.agentId === p.agentId && o.info.createdAt >= p.info.createdAt) n++;
+    let after = false;
+    for (const o of this.pending.values()) {
+      if (o === p) after = true;
+      else if (after && !o.outcome && o.agentId === p.agentId) n++;
+    }
     return n ? { queued: n } : {};
   }
 
