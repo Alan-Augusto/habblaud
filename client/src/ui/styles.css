@@ -7364,8 +7364,9 @@ html.is-replay #world {
     min-width: 0;
   }
 
+  /* O seletor Demonstração | Dados reais fica com a largura do conteúdo (196 px); o seletor de dia, com o que sobra. */
   .ui-day__source {
-    flex: 1.5 1 0;
+    flex: 0 0 auto;
     min-width: 0;
   }
 
