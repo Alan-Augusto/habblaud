@@ -12,9 +12,12 @@
 // 2. Cada mensagem, na ordem, vai para a sessão por `$.prompt.submit({ text, asUser: true })`: o modelo a lê como
 //    sua, sem o "The habblaud-mensagens plugin sent a message" (o registro da sessão ainda nomeia o plugin). O
 //    texto vai exatamente como chegou. `{drop}` (um hook recusou) ou exceção = falha, com o motivo.
-//    Com a sessão no meio de um turno, o Claude Code guarda o prompt até ela ficar livre e a chamada pode demorar a
-//    voltar: a espera por mensagem é de no máximo 2 s. Passou disso, a mensagem está na fila da sessão e conta
-//    como entregue, e as seguintes da mesma rodada vão em seguida, na ordem, sem esperar. Assim a rodada nunca
+//    Mensagem que começa com `/` é um comando de barra (`/compact`, `/model opus`): o Claude Code recusa esse texto
+//    em `$.prompt.submit`, então ela vai por `$.command.run({ command, args })`, que roda o comando como se você o
+//    tivesse digitado (com a sessão ocupada, quando ela ficar livre). Nome que a sessão não conhece = falha.
+//    Com a sessão no meio de um turno, o Claude Code guarda o prompt (ou o comando) até ela ficar livre e a chamada
+//    pode demorar a voltar: a espera por mensagem é de no máximo 2 s. Passou disso, a mensagem está na fila da sessão
+//    e conta como entregue, e as seguintes da mesma rodada vão em seguida, na ordem, sem esperar. Assim a rodada nunca
 //    passa de uns poucos segundos: a presença (10 s no servidor) e a confirmação (30 s) não vencem por uma
 //    sessão ocupada. O preço: um hook que recuse a mensagem depois desses 2 s não chega ao escritório.
 // 3. Um único POST /api/mod/inbox/ack com {session, results: [{id, ok, error?}]}. Sem mensagens, sem ack.
@@ -60,7 +63,13 @@ export interface AckResult {
   error?: string
 }
 
-/** Desfecho de um `$.prompt.submit`. */
+/** Um comando de barra como `$.command.run` recebe: o nome sem a barra e o que veio depois dele. */
+export interface SlashCommand {
+  command: string
+  args: string
+}
+
+/** Desfecho de um `$.prompt.submit` ou de um `$.command.run`. */
 type Submitted = { ok: true } | { ok: false; error: string }
 
 interface ModEnv {
@@ -159,6 +168,18 @@ export function parseInbox(text: string): InboxMessage[] | undefined {
   return out
 }
 
+/**
+ * Mensagem que é um comando de barra (`/compact`, `/model opus`): a barra é o primeiro caractere e o nome vai até o
+ * primeiro espaço ou quebra de linha; o resto, sem os espaços das pontas, são os argumentos. Só a barra, ou a barra
+ * seguida de espaço, não é comando. O Claude Code recusa em `$.prompt.submit` todo texto que começa com `/`: quem
+ * diz se o nome existe é o `$.command.run`.
+ */
+export function parseCommand(text: string): SlashCommand | undefined {
+  const m = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text)
+  if (!m) return undefined
+  return { command: m[1] ?? '', args: (m[2] ?? '').trim() }
+}
+
 /** O motivo de uma falha numa linha só, com tamanho limitado: o texto de um `{drop}` ou a mensagem de uma exceção. */
 export function reasonText(raw: unknown, fallback: string): string {
   const msg = typeof raw === 'string' ? raw : raw && typeof (raw as { message?: unknown }).message === 'string' ? (raw as { message: string }).message : ''
@@ -221,8 +242,20 @@ async function postJson($: EngineInterface, port: number, path: string, body: st
   }
 }
 
-/** Uma mensagem para a sessão, como se você a tivesse digitado. Nunca lança. */
+/** Um comando de barra na sessão, como se você o tivesse digitado. Nunca lança. */
+async function runCommand($: EngineInterface, slash: SlashCommand): Promise<Submitted> {
+  try {
+    await $.command.run({ command: slash.command, args: slash.args })
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: reasonText(err, 'a sessão não aceitou o comando') }
+  }
+}
+
+/** Uma mensagem para a sessão, como se você a tivesse digitado: um comando de barra ou um prompt. Nunca lança. */
 async function submitOne($: EngineInterface, text: string): Promise<Submitted> {
+  const slash = parseCommand(text)
+  if (slash) return runCommand($, slash)
   try {
     const r = await $.prompt.submit({ text, asUser: true })
     if (typeof r?.drop === 'string') return { ok: false, error: reasonText(r.drop, 'um hook da sessão recusou a mensagem') }

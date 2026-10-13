@@ -577,6 +577,11 @@ du [terminal](#terminal) devient une zone de saisie. Écrivez et appuyez sur `En
 texte entre dans la session **comme si vous l'aviez tapé dans son terminal**. Vous pouvez répondre quand l'agent finit
 son tour et attend la demande suivante, donner une nouvelle instruction ou corriger le cap, sans chercher la bonne fenêtre.
 
+- Les **commandes slash** fonctionnent aussi : un message qui commence par `/` (`/compact`, `/model opus`) exécute
+  la commande dans la session, comme si vous l'aviez tapée. Si l'agent est occupé, la commande attend la fin du
+  tour. Une commande que la session ne connaît pas revient comme **non remis**. Celles qui ouvrent un panneau
+  (`/config`, `/model` sans argument) l'ouvrent dans le terminal de la session, pas sur la page. Claude Code
+  uniquement : dans Codex, le texte part comme un message ordinaire.
 - La zone indique l'état : **en file** (la session récupère les messages toutes les 2 secondes), **remis** ou **non
   remis**, avec la raison. Si l'agent est occupé, le message attend et entre quand il finit son tour, comme un
   prompt tapé pendant que l'agent travaille.

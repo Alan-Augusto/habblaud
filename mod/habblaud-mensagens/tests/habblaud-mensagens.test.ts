@@ -1,10 +1,11 @@
 // Testes do plugin de mensagens, rodados pelo próprio Claude Code: `claude plugin test` dentro de
 // mod/habblaud-mensagens (sem sessão, sem login, sem rede). Os stubs respondem no lugar do Claude Code e do
 // Habblaud: env, relógio (mock.clock), $.session.id, $.session.surfaces, $.http.fetch (as duas rotas do
-// servidor) e o prompt.submit de baixo (a sessão: aceita, um hook recusa, a chamada lança ou fica presa).
+// servidor), o prompt.submit de baixo (a sessão: aceita, um hook recusa, a chamada lança ou fica presa) e o
+// command.run de baixo (o comando roda, não existe ou fica na fila da sessão ocupada).
 import type { HttpResponse, On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
-import { accountIdOf, ackBody, configDirOf, inboxBody, MAX_REASON, normalizePath, parseInbox, portOf, reasonText, type InboxMessage } from '../hooks/register'
+import { accountIdOf, ackBody, configDirOf, inboxBody, MAX_REASON, normalizePath, parseCommand, parseInbox, portOf, reasonText, type InboxMessage } from '../hooks/register'
 
 const NOW = Date.parse('2026-10-09T12:00:00Z')
 const PORT = '4850'
@@ -26,6 +27,8 @@ interface World {
   ack?: () => 'ok' | 'offline' | 'hang'
   /** Padrão: 'ok'. */
   fate?: (text: string) => Fate
+  /** O que a sessão faz com um comando de barra ('drop' não vale aqui). Padrão: 'ok'. */
+  commandFate?: (command: string) => Exclude<Fate, 'drop'>
 }
 
 interface Sent {
@@ -50,6 +53,7 @@ function world(on: On, w: World = {}) {
   mock.env(on, w.env ?? { HOME: '/home/fulano', CLAUDE_CONFIG_DIR: '~/.claude-conta2', HABBLAUD_PORT: PORT })
   const sent: Sent[] = []
   const submits: Array<{ text: string; origin: unknown }> = []
+  const commands: Array<{ command: string; args: string; origin: unknown }> = []
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.id', () => ({ value: 'sess-1' }))
   on('session.surfaces', () => ({ value: w.surfaces ?? ['terminal'] }))
@@ -81,10 +85,19 @@ function world(on: On, w: World = {}) {
     if (fate === 'hang') await clock.sleep(60_000)
     return { text: e.text }
   })
+  on('command.run', async ($, e) => {
+    commands.push({ command: e.command, args: e.args, origin: e.origin })
+    const fate = w.commandFate ? w.commandFate(e.command) : 'ok'
+    // O kit pula o hook que lança e, sem mais ninguém abaixo, rejeita a chamada: é como um nome desconhecido chega.
+    if (fate === 'throw') throw new Error(`Unknown command: /${e.command}`)
+    if (fate === 'hang') await clock.sleep(60_000)
+    return { text: `rodou /${e.command}` }
+  })
   return {
     clock,
     sent,
     submits,
+    commands,
     inboxes: () => sent.filter((s) => s.url === INBOX_URL),
     acks: () => sent.filter((s) => s.url === ACK_URL),
     texts: () => submits.map((s) => s.text),
@@ -226,6 +239,44 @@ describe('rodadas', () => {
     expect(w.acks()).toEqual([])
   })
 
+  test('comando de barra vai por command.run (nunca por prompt.submit), na ordem, com os argumentos', async ($, on) => {
+    const w = world(on, { inbox: batches([{ id: 'm1', text: '/compact' }, { id: 'm2', text: 'e agora segue' }, { id: 'm3', text: '/model  opus 4 ' }]) })
+    await $.session.start(START)
+    await w.clock.advance(2_000)
+    expect(w.commands.map((c) => ({ command: c.command, args: c.args }))).toEqual([
+      { command: 'compact', args: '' },
+      { command: 'model', args: 'opus 4' },
+    ])
+    expect(w.commands[0]?.origin).toEqual({ kind: 'plugin', name: 'habblaud-mensagens' })
+    expect(w.texts()).toEqual(['e agora segue'])
+    expect(w.acks()[0]?.body).toEqual({ session: 'sess-1', results: [{ id: 'm1', ok: true }, { id: 'm2', ok: true }, { id: 'm3', ok: true }] })
+  })
+
+  test('comando que a sessão não conhece: falha com o motivo, e as outras mensagens seguem', async ($, on) => {
+    const w = world(on, {
+      inbox: batches([{ id: 'm1', text: '/naoexiste agora' }, { id: 'm2', text: 'oi' }]),
+      commandFate: (c) => (c === 'naoexiste' ? 'throw' : 'ok'),
+    })
+    await $.session.start(START)
+    await w.clock.advance(2_000)
+    expect(w.texts()).toEqual(['oi'])
+    expect(w.acks()[0]?.body).toEqual({
+      session: 'sess-1',
+      results: [{ id: 'm1', ok: false, error: 'no implementation for command.run' }, { id: 'm2', ok: true }],
+    })
+  })
+
+  test('comando com a sessão ocupada: em 2 s conta como na fila e as seguintes vão atrás, sem esperar', async ($, on) => {
+    const w = world(on, { inbox: batches([{ id: 'm1', text: '/compact' }, { id: 'm2', text: 'depois disso, segue' }]), commandFate: () => 'hang' })
+    await $.session.start(START)
+    await w.clock.advance(2_000)
+    expect(w.acks()).toEqual([])
+    await w.clock.advance(2_000)
+    expect(w.commands.map((c) => c.command)).toEqual(['compact'])
+    expect(w.texts()).toEqual(['depois disso, segue'])
+    expect(w.acks()[0]?.body).toEqual({ session: 'sess-1', results: [{ id: 'm1', ok: true }, { id: 'm2', ok: true }] })
+  })
+
   test('Habblaud travado: desiste em 2 s e recua para 30 s', async ($, on) => {
     let hang = true
     const w = world(on, { inbox: () => (hang ? 'hang' : []) })
@@ -294,6 +345,19 @@ describe('funções puras', () => {
     const long = reasonText('x'.repeat(2_000), 'padrão')
     expect(long.length).toBe(MAX_REASON)
     expect(long.endsWith('…')).toBe(true)
+  })
+
+  test('comando de barra: a barra no começo, o nome até o primeiro espaço e o resto como argumentos', () => {
+    expect(parseCommand('/compact')).toEqual({ command: 'compact', args: '' })
+    expect(parseCommand('/compact  guarda só o plano \n')).toEqual({ command: 'compact', args: 'guarda só o plano' })
+    expect(parseCommand('/habblaud:status')).toEqual({ command: 'habblaud:status', args: '' })
+    expect(parseCommand('/review\n123')).toEqual({ command: 'review', args: '123' })
+    // texto comum, mesmo com barra no meio ou espaço antes dela, continua sendo um prompt
+    expect(parseCommand('roda o /compact depois')).toBeUndefined()
+    expect(parseCommand(' /compact')).toBeUndefined()
+    expect(parseCommand('/')).toBeUndefined()
+    expect(parseCommand('/ compact')).toBeUndefined()
+    expect(parseCommand('')).toBeUndefined()
   })
 
   test('conta e porta como o mod habblaud calcula (também no Windows)', () => {

@@ -549,6 +549,11 @@ With the messages plugin installed (`npm run mod:install`, which installs it alo
 goes into the session **as if you had typed it in its terminal**. You can reply when the agent finishes its turn
 and waits for the next request, give a new instruction or correct its course, without hunting for the right window.
 
+- **Slash commands** work too: a message that starts with `/` (`/compact`, `/model opus`) runs the command in the
+  session, as if you had typed it. With the agent busy, the command waits for the turn to end. A command the
+  session does not know comes back as **not delivered**. Those that open a panel (`/config`, `/model` with no
+  argument) open it in the session's terminal, not on the page. Claude Code only: in Codex, the text goes as a
+  regular message.
 - The box shows the status: **queued** (the session fetches messages every 2 seconds), **delivered** or **not
   delivered**, with the reason. With the agent busy, the message waits and goes in when it finishes its turn, like a
   prompt typed while the agent is working.

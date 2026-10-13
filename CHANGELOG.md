@@ -10,6 +10,13 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Adicionado
+
+- **Comandos de barra pela caixa de mensagem (Claude Code):** uma mensagem que começa com `/` (`/compact`,
+  `/model opus`) roda o comando na sessão, como se você o tivesse digitado no terminal dela; antes voltava como "não
+  entregue". Com o agente ocupado, o comando espera o turno terminar, e um comando que a sessão não conhece volta
+  como não entregue, com o motivo. Sessões abertas pegam a mudança com `/reload-plugins`.
+
 ## [0.11.0] - 2026-10-13
 
 Para atualizar: `git pull` e `npm run docker:up` (ele também atualiza o mod do Habblaud nas contas). O acesso pelo

@@ -547,6 +547,10 @@ Com o plugin de mensagens instalado (`npm run mod:install`, que o instala junto 
 entra na sessão **como se você tivesse digitado no terminal dela**. Dá para responder quando o agente termina o turno
 e espera o próximo pedido, dar uma instrução nova ou corrigir o rumo, sem procurar a janela certa.
 
+- **Comandos de barra** também valem: uma mensagem que começa com `/` (`/compact`, `/model opus`) roda o comando na
+  sessão, como se você o tivesse digitado. Com o agente ocupado, o comando espera o turno terminar. Um comando que
+  a sessão não conhece volta como **não entregue**. Os que abrem um painel (`/config`, `/model` sem argumento) abrem
+  no terminal da sessão, não na página. Só no Claude Code: no Codex, o texto vai como mensagem comum.
 - A caixa mostra a situação: **na fila** (a sessão busca as mensagens a cada 2 segundos), **entregue** ou **não
   entregue**, com o motivo. Com o agente ocupado, a mensagem espera e entra quando ele terminar o turno, como um
   prompt digitado com o agente trabalhando.
