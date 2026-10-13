@@ -333,5 +333,11 @@ describe('caixa de mensagem no modo demonstração', () => {
     list[0].name = 'mudou';
     expect((await store.sessionCommands('qualquer'))[0].name).not.toBe('mudou');
   });
-});
 
+  it('arquivos do projeto: a busca do @ numa lista fictícia', async () => {
+    const store = new OfficeStore({ mock: true });
+    expect(await store.projectFiles('qualquer', 'pedidos')).toEqual(['src/api/pedidos.ts', 'tests/pedidos.test.ts']);
+    expect((await store.projectFiles('qualquer', '')).slice(0, 2)).toEqual(['README.md', 'package.json']);
+    expect(await store.projectFiles('qualquer', 'zzz')).toEqual([]);
+  });
+});

@@ -6,7 +6,8 @@
 // ex.: servidor reiniciando atrás de um proxy), tenta de novo com espera crescente.
 import type { AppearanceParts } from '../../../shared/appearance';
 import type { Activity, AgentDetail, AgentInfo, FeedItem, Notice, OfficeSnapshot, OutboxMessage, PermissionDecision, PermissionRequestInfo, RoomInfo, SessionCommand } from '../../../shared/types';
-import { DEMO_COMMANDS } from '../../../shared/demo/composer';
+import { DEMO_COMMANDS, DEMO_FILES } from '../../../shared/demo/composer';
+import { rankFiles } from '../../../shared/messages';
 import { DemoSimulator } from '../../../shared/demo/simulator';
 import { tr } from '../../../shared/i18n';
 
@@ -341,10 +342,11 @@ export class OfficeStore {
 
   /**
    * Arquivos do projeto do agente que casam com `query` (GET /api/messages/files/:id), para citar com `@` na caixa de
-   * mensagem. No ?mock=1 não há projeto: vazia. Sem conexão, ou sem quem liste (503): lança.
+   * mensagem. No ?mock=1 não há projeto: a busca é numa lista fictícia (shared/demo/composer.ts). Sem conexão, ou
+   * sem quem liste (503): lança.
    */
   async projectFiles(agentId: string, query: string): Promise<string[]> {
-    if (this.mock) return [];
+    if (this.mock) return rankFiles(DEMO_FILES, query);
     const res = await fetch(`/api/messages/files/${encodeURIComponent(agentId)}?q=${encodeURIComponent(query)}`);
     if (!res.ok) throw new Error(tr('erro {0}', [res.status]));
     const list = ((await res.json()) as { files?: unknown }).files;

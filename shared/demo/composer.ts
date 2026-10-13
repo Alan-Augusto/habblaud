@@ -17,3 +17,25 @@ export const DEMO_COMMANDS: readonly SessionCommand[] = [
   { name: 'habblaud', description: 'Resumo do escritório do Habblaud', source: 'plugin' },
   { name: 'revisar-pr', description: 'Revisa o pull request aberto no branch atual', source: 'user' },
 ];
+
+/** Arquivos de um projeto fictício, para o `@` da caixa. */
+export const DEMO_FILES: readonly string[] = [
+  'README.md',
+  'package.json',
+  'tsconfig.json',
+  'docs/arquitetura.md',
+  'docs/roteiro.md',
+  'src/index.ts',
+  'src/app.ts',
+  'src/config.ts',
+  'src/api/pedidos.ts',
+  'src/api/clientes.ts',
+  'src/api/pagamentos.ts',
+  'src/ui/carrinho.tsx',
+  'src/ui/checkout.tsx',
+  'src/ui/componentes/botao.tsx',
+  'src/ui/componentes/tabela.tsx',
+  'tests/pedidos.test.ts',
+  'tests/pagamentos.test.ts',
+];
+
