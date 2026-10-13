@@ -709,12 +709,17 @@ export class StatsBook {
     day.waits.push(rec);
     if (day.waits.length > MAX_WAITS_PER_DAY) {
       // Cheio: sai a espera fechada mais curta.
+      const length = (i: number) => day.waits[i].end - day.waits[i].start;
       let worst = -1;
       day.waits.forEach((w, i) => {
         if (w.open || w === rec) return;
-        if (worst < 0 || w.end - w.start < day.waits[worst].end - day.waits[worst].start) worst = i;
+        if (worst < 0 || length(i) < length(worst)) worst = i;
       });
-      if (worst >= 0) day.waits.splice(worst, 1);
+      // Sem nenhuma fechada para tirar (todas ainda abertas): sai a mais curta de todas, para o limite valer sempre.
+      if (worst < 0) {
+        for (let i = 0; i < day.waits.length; i++) if (worst < 0 || length(i) < length(worst)) worst = i;
+      }
+      day.waits.splice(worst, 1);
     }
     this.touch(day, rec.end);
   }
