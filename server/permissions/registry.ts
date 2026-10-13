@@ -28,7 +28,7 @@ import { tr } from '../../shared/i18n';
 /** Tempo que o hook espera por padrão (ele manda o próprio em `timeout_ms`). */
 export const DEFAULT_TIMEOUT_MS = 300_000;
 export const MIN_TIMEOUT_MS = 5_000;
-export const MAX_TIMEOUT_MS = 30 * 60_000;
+export const MAX_TIMEOUT_MS = 24 * 60 * 60_000;
 /** Folga depois do tempo limite do hook antes de o pedido sumir sozinho. */
 export const EXPIRY_GRACE_MS = 5_000;
 /** Resposta mais longa de um long-poll (o hook pergunta de novo em seguida). */
@@ -42,6 +42,12 @@ export const SCAN_EVERY_MS = 1_000;
 /** Principal que esperava (diálogo aberto) e deixou de esperar há este tempo: respondeu no terminal. */
 export const LEFT_WAITING_MS = 3_000;
 export const MAX_PENDING = 32;
+/**
+ * Espera longa (HABBLAUD_PERMISSION_TIMEOUT acima do padrão) sem nenhuma página que responda há este tempo, e sem
+ * celular que possa entrar depois: o pedido volta ao terminal (senão ficaria até 24 h onde ninguém o vê; nos
+ * subagentes em segundo plano o terminal só mostra o diálogo quando o hook termina).
+ */
+export const UNWATCHED_MS = 5 * 60_000;
 
 const DESTINATIONS = new Set(['session', 'localSettings', 'projectSettings', 'userSettings']);
 const MAX_SUGGESTIONS = 4;
@@ -64,6 +70,8 @@ export interface RegistryOptions {
   office: OfficeLike;
   /** Páginas locais conectadas (Hub.localSize): sem nenhuma, o pedido não é desviado do terminal. */
   viewers: () => number;
+  /** Uma página que ainda não está aberta pode responder depois (celular com login e `permissions` liberado). */
+  answerLater?: () => boolean;
   /** Transcript de um agente presente (ClaudeWatcher.transcriptPathOf). */
   transcriptPathOf?: (agentId: string) => string | undefined;
   /**
@@ -85,7 +93,7 @@ export interface RegistryOptions {
 
 export type SkipReason = 'no-viewers' | 'unknown-session' | 'unsupported-tool' | 'too-many';
 export type RegisterResult = { id: string; expiresAt: number } | { skip: SkipReason };
-export type ReleaseReason = 'terminal' | 'answered' | 'expired' | 'orphan' | 'gone' | 'shutdown';
+export type ReleaseReason = 'terminal' | 'answered' | 'expired' | 'orphan' | 'gone' | 'unwatched' | 'shutdown';
 
 /**
  * Resposta de uma espera do hook. `answer`: as respostas por posição (o hook as troca pelos textos originais
@@ -342,6 +350,8 @@ export class PermissionRegistry {
   private readonly orphanMs: number;
   private readonly resolvedKeepMs: number;
   private readonly maxPending: number;
+  /** Desde quando não há nenhuma página que responda (null = há). */
+  private unwatchedSince: number | null = null;
 
   constructor(private readonly opts: RegistryOptions) {
     this.now = opts.now ?? Date.now;
@@ -537,6 +547,8 @@ export class PermissionRegistry {
   /** Relógio: expiração, órfãos, agente que saiu, resposta no terminal e limpeza das decisões entregues. */
   tick(): void {
     const now = this.now();
+    this.unwatchedSince = this.opts.viewers() > 0 ? null : (this.unwatchedSince ?? now);
+    const unwatched = this.unwatchedSince !== null && now - this.unwatchedSince >= UNWATCHED_MS && !this.opts.answerLater?.();
     for (const [id, p] of this.pending) {
       if (p.outcome) {
         if (now - (p.resolvedAt ?? now) >= this.resolvedKeepMs) this.pending.delete(id);
@@ -545,6 +557,7 @@ export class PermissionRegistry {
       if (now >= p.info.expiresAt + EXPIRY_GRACE_MS) this.release(p, 'expired');
       else if (!p.waiters.size && now - p.idleSince >= this.orphanMs) this.release(p, 'orphan');
       else if (!present(this.opts.office.get(p.agentId))) this.release(p, 'gone');
+      else if (unwatched && p.info.expiresAt - p.info.createdAt > DEFAULT_TIMEOUT_MS) this.release(p, 'unwatched');
       // No Codex o terminal só pede a aprovação depois que o hook termina: não há resposta dada lá para procurar.
       else if (p.codex) continue;
       else if (now - p.lastScanAt >= SCAN_EVERY_MS && this.answeredInTerminal(p, now)) this.release(p, 'answered');

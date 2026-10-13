@@ -6,7 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_TIMEOUT_S, hookCommand, hookEntry, STATUS_MESSAGE } from '../../scripts/hooks-install';
+import { hookCommand, hookEntry, STATUS_MESSAGE } from '../../scripts/hooks-install';
+import { MAX_TIMEOUT_MS } from '../permissions/registry';
 import { posixShell } from './fixtures';
 
 const ROOT = resolve(__dirname, '../..');
@@ -97,8 +98,10 @@ describe('plugin habblaud-permissoes', () => {
   const dir = join(ROOT, 'mod/habblaud-permissoes');
   const hooks = settingsHooks(json('mod/habblaud-permissoes/hooks/hooks.json'));
 
-  it('o mesmo hook do instalador: PermissionRequest, matcher "*", tempo limite e mensagem iguais', () => {
-    const installed = hookEntry(hookCommand('node', '/x/permission-hook.mjs', { port: 4747, timeoutS: DEFAULT_TIMEOUT_S }), { port: 4747, timeoutS: DEFAULT_TIMEOUT_S });
+  // No plugin a espera vem do ambiente (HABBLAUD_PERMISSION_TIMEOUT), não do comando: o tempo limite do Claude Code
+  // precisa caber a maior espera que o hook aceita, senão ele mata o hook antes (era 330 s e cortava em 5 min; a espera vai até 24 h).
+  it('o mesmo hook do instalador: PermissionRequest, matcher "*", mensagem igual e tempo limite que cabe a espera máxima', () => {
+    const installed = hookEntry(hookCommand('node', '/x/permission-hook.mjs', { port: 4747, timeoutS: MAX_TIMEOUT_MS / 1000 }), { port: 4747, timeoutS: MAX_TIMEOUT_MS / 1000 });
     expect(hooks).toHaveLength(1);
     expect(hooks[0]).toEqual({
       event: 'PermissionRequest',

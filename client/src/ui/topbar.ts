@@ -1,4 +1,6 @@
 // Barra superior: marca, conexão, contadores, uso por conta e botões de controle.
+import { access } from '../net/access';
+import { SpawnPanel } from './spawn';
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText, setTitle, setVariant } from './dom';
 import { formatDuration, formatInt } from './format';
@@ -43,6 +45,8 @@ export class TopBar implements UiComponent {
   private feedBtn: HTMLButtonElement;
   private timelapseBtn: HTMLButtonElement;
   readonly settingsBtn: HTMLButtonElement;
+  private readonly spawnBtn: HTMLButtonElement;
+  private readonly spawnPanel: SpawnPanel;
   /** Grupo dos botões de painéis (feed, configurações, ajuda); o histórico entra aqui (ui/index.ts). */
   readonly panelGroup: HTMLElement;
 
@@ -95,10 +99,15 @@ export class TopBar implements UiComponent {
     this.usage = new UsageCards(ctx);
 
     this.sidebarBtn = iconButton(ICONS.sidebar, tr('Painel lateral ( [ )'), () => ctx.togglePanel('sidebar'), 'ui-btn-sidebar');
-    this.feedBtn = iconButton(ICONS.feed, tr('Feed de atividade ( ] )'), () => ctx.togglePanel('feed'));
+    this.feedBtn = iconButton(ICONS.feed, tr('Feed de atividade ( ] )'), () => ctx.togglePanel('feed'), 'ui-btn-feed');
     this.timelapseBtn = iconButton(TIMELAPSE_ICONS.timelapse, tr('Timelapse: reproduzir o dia (L)'), () => ctx.toggleTimelapse(), 'ui-btn-timelapse');
     this.settingsBtn = iconButton(ICONS.settings, tr('Configurações'), () => ctx.toggleSettings());
     this.settingsBtn.setAttribute('aria-haspopup', 'dialog');
+    this.spawnPanel = new SpawnPanel(ctx);
+    ctx.root.append(this.spawnPanel.el);
+    this.spawnBtn = iconButton(ICONS.newAgent, tr('Novo agente: começa uma sessão do Claude Code no computador'), () => this.spawnPanel.toggle(this.spawnBtn), 'ui-btn-spawn');
+    this.spawnBtn.setAttribute('aria-haspopup', 'dialog');
+    this.spawnBtn.hidden = true;
     this.version = new VersionChip(ctx, this.settingsBtn);
     const viewGroup = h(
       'div',
@@ -110,6 +119,7 @@ export class TopBar implements UiComponent {
     const panelGroup = h(
       'div',
       { class: 'ui-btn-group', role: 'group', attrs: { 'aria-label': tr('Painéis') } },
+      this.spawnBtn,
       this.timelapseBtn,
       this.feedBtn,
       this.settingsBtn,
@@ -189,6 +199,7 @@ export class TopBar implements UiComponent {
 
     this.usage.render();
     this.version.render();
+    setHidden(this.spawnBtn, !access().spawn || store.mock || store.replaying);
 
     this.sidebarBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('sidebar')));
     this.feedBtn.setAttribute('aria-pressed', String(this.ctx.isPanelOpen('feed')));

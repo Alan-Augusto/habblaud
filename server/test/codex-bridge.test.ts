@@ -6,7 +6,8 @@ import { mkdirSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkMessage, httpPost, parseArgs, round } from '../../scripts/codex-bridge';
+import { checkMessage, dictationRound, filesRound, httpPost, parseArgs, round, spawnRound, type Post } from '../../scripts/codex-bridge';
+import { spawnUrl } from '../spawn/spawn';
 import { AccountsService } from '../accounts/service';
 import { createApiHandler } from '../http/app';
 import { createRequestGuard } from '../http/guard';
@@ -163,5 +164,119 @@ describe('rotas do auxiliar do Codex', () => {
     expect(parseArgs(['-h'], {})).toBe('help');
     expect(() => parseArgs(['--port', 'x'], {})).toThrow(/--port/);
     expect(() => parseArgs(['--xyz'], {})).toThrow(/desconhecida/);
+  });
+});
+
+describe('spawnRound com anexos e dictationRound', () => {
+  it('grava os anexos aqui e o link leva os caminhos; anexo ilegível recusa o pedido', async () => {
+    const post: Post = async (path) =>
+      path === '/api/host/spawn/poll'
+        ? { status: 200, json: { spawns: [
+            { id: 'a', folder: '/ok', prompt: 'veja', files: [{ name: '../print.png', type: 'image/png', data: Buffer.from('png').toString('base64') }] },
+            { id: 'b', folder: '/ok', prompt: '', files: [{ name: 'x', data: 'não é base64!' }] },
+          ] } }
+        : { status: 200, json: { ok: true } };
+    const opened: string[] = [];
+    const wrote: string[] = [];
+    const r = await spawnRound(post, async (url) => (opened.push(url), { ok: true }), () => {}, () => undefined, (id, files) =>
+      files.map((f) => (wrote.push(`${id}:${f.name}:${f.data.toString()}`), `/h/att/${f.name}`)),
+    );
+    expect(wrote).toEqual(['a:print.png:png']);
+    expect(new URL(opened[0]).searchParams.get('q')).toBe('veja\n\nAnexo enviado pelo Habblaud (leia antes de começar):\n- /h/att/print.png');
+    expect(r).toEqual({ state: 'ok', results: [{ id: 'a', ok: true, how: 'app' }, { id: 'b', ok: false, error: 'anexo ilegível' }] });
+  });
+
+  it('dictationRound transcreve e devolve texto e idioma; erro vira resultado', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const post: Post = async (path, body) => {
+      calls.push([path, body]);
+      return path === '/api/host/dictation/poll'
+        ? { status: 200, json: { dictations: [{ id: 'd1', type: 'audio/mp4', data: Buffer.from('ok').toString('base64') }, { id: 'd2', type: 'audio/mp4', data: Buffer.from('ruim').toString('base64') }] } }
+        : { status: 200, json: { ok: true } };
+    };
+    const r = await dictationRound(post, async (buf) => {
+      if (buf.toString() === 'ruim') throw new Error('o Whisper falhou (x)');
+      return { text: 'crie um agente', lang: 'pt' };
+    });
+    expect(r).toEqual({ state: 'ok', results: [{ id: 'd1', ok: true, text: 'crie um agente', lang: 'pt' }, { id: 'd2', ok: false, error: 'o Whisper falhou (x)' }] });
+    expect(calls[1][0]).toBe('/api/host/dictation/ack');
+    expect(await dictationRound(async () => null, async () => ({ text: '', lang: '' }))).toEqual({ state: 'down' });
+  });
+});
+
+describe('filesRound (arquivos das entregas pelo auxiliar)', () => {
+  it('lê só o que passa na checagem e devolve base64; recusa com motivo', async () => {
+    let acked: unknown;
+    const post: Post = async (path, body) => {
+      if (path === '/api/host/files/poll') return { status: 200, json: { files: [{ id: 'f1', path: '/ok/a.png' }, { id: 'f2', path: '/Users/a/.ssh/id.png' }] } };
+      acked = body;
+      return { status: 200, json: { ok: true } };
+    };
+    const r = await filesRound(post, () => {}, () => Buffer.from('png'), (p) => (p.includes('.ssh') ? { error: 'arquivo protegido' } : { path: p, size: 3 }));
+    expect(r).toEqual({ state: 'ok', results: [{ id: 'f1', ok: true }, { id: 'f2', ok: false, error: 'arquivo protegido' }] });
+    expect(acked).toEqual({ results: [{ id: 'f1', ok: true, data: Buffer.from('png').toString('base64') }, { id: 'f2', ok: false, error: 'arquivo protegido' }] });
+  });
+
+  it('fora das pastas que pode ler (inside): recusa sem ler; com espera, pede a rodada com ?wait=1', async () => {
+    const paths: string[] = [];
+    let reads = 0;
+    const post: Post = async (path) => {
+      paths.push(path);
+      if (path.startsWith('/api/host/files/poll')) return { status: 200, json: { files: [{ id: 'f1', path: '/Users/a/Documents/extrato.pdf' }] } };
+      return { status: 200, json: { ok: true } };
+    };
+    const r = await filesRound(post, () => {}, () => (reads++, Buffer.from('x')), (p) => ({ path: p, size: 1 }), { inside: (p) => p.startsWith('/proj/'), wait: true });
+    expect(r).toEqual({ state: 'ok', results: [{ id: 'f1', ok: false, error: 'fora das pastas de projeto conhecidas' }] });
+    expect(reads).toBe(0);
+    expect(paths[0]).toBe('/api/host/files/poll?wait=1');
+  });
+});
+
+describe('spawnRound (agentes novos pelo auxiliar)', () => {
+  it('com o claude: roda em segundo plano; pasta não confiável cai no app e diz por quê', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const post: Post = async (path, body) => {
+      calls.push([path, body]);
+      return path === '/api/host/spawn/poll'
+        ? { status: 200, json: { spawns: [{ id: 'a', folder: '/conhecida', prompt: 'oi' }, { id: 'b', folder: '/nova', prompt: 'oi' }] } }
+        : { status: 200, json: { ok: true } };
+    };
+    const opened: string[] = [];
+    const ran: string[] = [];
+    const lines: string[] = [];
+    const r = await spawnRound(
+      post,
+      async (url) => (opened.push(url), { ok: true }),
+      (l) => lines.push(l),
+      () => undefined,
+      () => [],
+      async (req) => (ran.push(req.folder), req.folder === '/conhecida' ? { ok: true, id: 'x1' } : { ok: false, error: 'Workspace not trusted. Run `claude` in /nova once' }),
+    );
+    expect(ran).toEqual(['/conhecida', '/nova']);
+    expect(opened).toEqual([spawnUrl({ folder: '/nova', prompt: 'oi' })]);
+    expect(r).toMatchObject({ state: 'ok', results: [{ id: 'a', ok: true, how: 'cli' }, { id: 'b', ok: true, how: 'app', note: expect.stringMatching(/confiável/) }] });
+    expect(calls[1]).toEqual(['/api/host/spawn/ack', { results: (r as { results: unknown }).results }]);
+    expect(lines[0]).toMatch(/segundo plano em \/conhecida/);
+  });
+
+  it('monta o link ele mesmo, recusa pasta que não existe e confirma tudo numa chamada', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const post: Post = async (path, body) => {
+      calls.push([path, body]);
+      if (path === '/api/host/spawn/poll') {
+        return { status: 200, json: { spawns: [{ id: 'a', folder: '/ok', prompt: 'p', url: 'https://evil.example' }, { id: 'b', folder: '/sumiu', prompt: '' }, { folder: '/sem-id' }] } };
+      }
+      return { status: 200, json: { ok: true } };
+    };
+    const opened: string[] = [];
+    const r = await spawnRound(post, async (url) => (opened.push(url), { ok: true }), () => {}, (f) => (f === '/ok' ? undefined : 'pasta não encontrada neste computador'));
+    expect(opened).toEqual([spawnUrl({ folder: '/ok', prompt: 'p' })]);
+    expect(r).toEqual({ state: 'ok', results: [{ id: 'a', ok: true, how: 'app' }, { id: 'b', ok: false, error: 'pasta não encontrada neste computador' }] });
+    expect(calls[1]).toEqual(['/api/host/spawn/ack', { results: r.state === 'ok' ? r.results : [] }]);
+  });
+
+  it('Habblaud fora do ar ou recusando', async () => {
+    expect(await spawnRound(async () => null, async () => ({ ok: true }))).toEqual({ state: 'down' });
+    expect(await spawnRound(async () => ({ status: 403, json: { error: 'x' } }), async () => ({ ok: true }))).toEqual({ state: 'refused', status: 403 });
   });
 });

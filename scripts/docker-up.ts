@@ -40,6 +40,8 @@ import { detectCodexAccounts, discoverCodexDirs } from '../server/sources/codex/
 import { describeStateMigration, LEGACY_NAME, legacyEnvWarning, migrateLegacyStateDir } from '../server/legacy';
 import { makeClaudeRunner, MIN_CLAUDE_VERSION, readPackageVersion, updateInstalledMods, type ModUpdateResult } from './mod-install';
 import { tr } from '../shared/i18n';
+import { readEnvValue } from '../server/remote/envfile';
+import { ensureServerCert, remoteTargets, remoteTlsBase, tlsPaths } from '../server/remote/tls';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HOME = process.env.HOME || homedir();
@@ -51,6 +53,8 @@ const ENV_FILE = join(ROOT, '.env');
 const USAGE_DIR = process.env.HABBLAUD_USAGE_DIR?.trim() ? resolve(process.env.HABBLAUD_USAGE_DIR.trim()) : join(STATE_DIR, 'usage');
 /** Onde essa pasta aparece no container. */
 const CONTAINER_USAGE_DIR = '/usage';
+/** Onde o container lê o certificado do acesso remoto (server/http/remote.ts). */
+const CONTAINER_REMOTE_TLS_DIR = '/remote-tls';
 const SERVICE = 'habblaud';
 /** Raiz das montagens dentro do container: /claude/<conta>/{projects,sessions}. */
 const CONTAINER_ROOT = '/claude';
@@ -300,7 +304,15 @@ export function hostTimeZone(env: NodeJS.ProcessEnv = process.env): string | und
  * montada somente leitura em /usage. `timeZone`: fuso do host, repassado como TZ. `codex`: montagens das contas do
  * Codex (planCodexMounts).
  */
-export function renderOverride(mounts: AccountMount[], generatedAt: Date = new Date(), usageDir?: string, timeZone?: string, codex: AccountMount[] = []): string {
+export function renderOverride(
+  mounts: AccountMount[],
+  generatedAt: Date = new Date(),
+  usageDir?: string,
+  timeZone?: string,
+  codex: AccountMount[] = [],
+  remoteTlsDir?: string,
+  extraPorts: string[] = [],
+): string {
   const env: Array<[string, string]> = [
     ['HABBLAUD_CLAUDE_DIRS', mounts.map((m) => m.mountDir).join(',')],
     ['HABBLAUD_ACCOUNTS', JSON.stringify([...accountsPayload(mounts), ...codexAccountsPayload(codex)])],
@@ -318,8 +330,12 @@ export function renderOverride(mounts: AccountMount[], generatedAt: Date = new D
     '    environment:',
     ...env.map(([k, v]) => `      ${k}: ${yamlString(v)}`),
   ];
+  // O Compose junta estas portas às do docker-compose.yml.
+  if (extraPorts.length) lines.push('    ports:', ...extraPorts.map((p) => `      - ${yamlString(p)}`));
   const binds = [...mounts, ...codex].flatMap((m) => m.binds);
   if (usageDir) binds.push({ source: usageDir, target: CONTAINER_USAGE_DIR });
+  // Acesso remoto: SÓ a pasta do certificado do servidor (a chave da CA fica no host).
+  if (remoteTlsDir) binds.push({ source: remoteTlsDir, target: CONTAINER_REMOTE_TLS_DIR });
   if (binds.length) {
     lines.push('    volumes:');
     for (const b of binds) {
@@ -661,8 +677,10 @@ async function up(opts: Options, port: number): Promise<void> {
   migrateStateDir();
   const usageDir = ensureUsageDir();
   if (usageDir) say(tr('Uso ao vivo (mod ou tap de statusline): monta {0} em {1}, somente leitura.', [tildify(USAGE_DIR), CONTAINER_USAGE_DIR]));
+  const remoteTlsDir = prepareRemoteTls();
+  const remotePorts = remoteTlsDir || remoteInsecure() ? remotePortsToPublish() : [];
   const tmp = `${OVERRIDE_FILE}.tmp`;
-  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts), { mode: 0o600 });
+  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts, remoteTlsDir, remotePorts), { mode: 0o600 });
   chmodSync(tmp, 0o600);
   renameSync(tmp, OVERRIDE_FILE);
   say(tr('docker-compose.override.yml gerado.'));
@@ -694,6 +712,81 @@ async function up(opts: Options, port: number): Promise<void> {
   // Com a cópia falha, os dados só existem no volume antigo: nada de sugerir apagá-lo.
   if (plan.cleanup.length && !copyFailed) say(tr('  Sobrou do CodeTown; depois de conferir o escritório, apague com: {0}', [plan.cleanup.join(' · ')]));
   say(tr('  Logs: npm run docker:logs · Parar: npm run docker:down'));
+}
+
+/**
+ * Acesso remoto ligado no .env (npm run remote:setup): confere o certificado do servidor e o refaz quando o IP do Wi-Fi
+ * mudou ou ele está perto de vencer (a CA continua a mesma, então o celular segue confiando). Devolve a pasta a montar.
+ */
+function prepareRemoteTls(): string | undefined {
+  let env = '';
+  try {
+    env = readFileSync(ENV_FILE, 'utf8');
+  } catch {
+    return undefined;
+  }
+  if (!readEnvValue(env, 'HABBLAUD_REMOTE_USER')) return undefined;
+  const paths = tlsPaths(remoteTlsBase(HOME));
+  if (!statOk(paths.caCert)) {
+    warn(tr('acesso remoto configurado, mas sem a CA local: rode npm run remote:setup.'));
+    return undefined;
+  }
+  try {
+    const targets = remoteTargets({ name: readEnvValue(env, 'HABBLAUD_REMOTE_NAME'), domain: readEnvValue(env, 'HABBLAUD_REMOTE_DOMAIN') });
+    const r = ensureServerCert(paths, targets);
+    if (r.issued) say(tr('Acesso remoto: certificado do servidor renovado ({0}).', [r.reason]));
+    say(tr('Acesso remoto: monta {0} em {1}, somente leitura.', [tildify(paths.serverDir), CONTAINER_REMOTE_TLS_DIR]));
+    return paths.serverDir;
+  } catch (err) {
+    warn(tr('acesso remoto: não consegui conferir o certificado ({0}).', [(err as Error).message]));
+    return statOk(paths.serverCert) ? paths.serverDir : undefined;
+  }
+}
+
+/**
+ * Portas do acesso pelo celular, só com ele configurado (HABBLAUD_REMOTE_USER no .env): a remota (HABBLAUD_REMOTE_PORT,
+ * padrão 4748) e, se houver, HABBLAUD_REMOTE_HTTP_PORT (o setup grava 80 quando a remota é a 443), que cai na mesma
+ * porta do container e responde HTTP com 308 para https:// — quem digita só "meuclaude.local" cai no HTTPS. Sem o
+ * setup, nada é publicado além da 4747.
+ */
+export function remotePortsFrom(env: string): string[] {
+  if (!readEnvValue(env, 'HABBLAUD_REMOTE_USER')) return [];
+  const bind = readEnvValue(env, 'HABBLAUD_REMOTE_BIND') || '127.0.0.1';
+  const valid = (n: number) => Number.isInteger(n) && n > 0 && n < 65536;
+  const raw = readEnvValue(env, 'HABBLAUD_REMOTE_PORT');
+  const port = raw ? Number(raw) : 4748;
+  const out = valid(port) ? [`${bind}:${port}:4748`] : [];
+  const http = Number(readEnvValue(env, 'HABBLAUD_REMOTE_HTTP_PORT'));
+  if (valid(http) && http !== port) out.push(`${bind}:${http}:4748`);
+  return out;
+}
+
+function remoteInsecure(): boolean {
+  try {
+    const env = readFileSync(ENV_FILE, 'utf8');
+    return !!readEnvValue(env, 'HABBLAUD_REMOTE_USER') && /^(1|true|yes|sim|on)$/i.test(readEnvValue(env, 'HABBLAUD_REMOTE_INSECURE_HTTP') ?? '');
+  } catch {
+    return false;
+  }
+}
+
+function remotePortsToPublish(): string[] {
+  try {
+    const ports = remotePortsFrom(readFileSync(ENV_FILE, 'utf8'));
+    for (const p of ports) say(tr('Acesso remoto: publica {0} (porta {1} do container).', [p.split(':').slice(0, 2).join(':'), 4748]));
+    return ports;
+  } catch {
+    return [];
+  }
+}
+
+function statOk(path: string): boolean {
+  try {
+    statSync(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Atualiza o mod de quem já instalou (ver mod-install.ts). Nada aqui derruba o docker:up. */

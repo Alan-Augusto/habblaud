@@ -1,4 +1,5 @@
 // Configurações (popover): opções do escritório, avisos, modo demonstração e Sobre (versão).
+import { access, remoteLogout } from '../net/access';
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText } from './dom';
 import { ICONS } from './icons';
@@ -89,6 +90,9 @@ export class SettingsPopover implements UiComponent {
   private language: ReturnType<typeof segmented<LanguageChoice>>;
   private soundGroup: SoundSettingsGroup;
   private demoGroup: HTMLElement;
+  /** Só na página do celular (porta remota com login): sair deste aparelho. */
+  private remoteGroup: HTMLElement;
+  private logoutBtn: HTMLButtonElement;
   private about: AboutGroup;
   private demoBusy = false;
   private anchor: HTMLElement | null = null;
@@ -158,6 +162,24 @@ export class SettingsPopover implements UiComponent {
       sw('demo', tr('Modo demonstração'), tr('Coloca agentes fictícios no escritório, junto com os reais.'), () => void this.toggleDemo()),
     );
 
+    this.logoutBtn = h('button', { class: 'ui-btn', type: 'button', text: tr('Sair'), on: { click: () => void this.logout() } }) as HTMLButtonElement;
+    this.remoteGroup = h(
+      'div',
+      { class: 'ui-set-group', hidden: true },
+      h('h3', { text: tr('Acesso pelo celular') }),
+      h(
+        'div',
+        { class: 'ui-set' },
+        h(
+          'div',
+          { class: 'ui-set__text' },
+          h('span', { class: 'ui-set__label', text: tr('Sair deste aparelho') }),
+          h('span', { class: 'ui-set__hint', text: tr('Encerra o login aqui (uma cópia do cookie também deixa de valer). Para voltar, entre com usuário e senha.') }),
+        ),
+        this.logoutBtn,
+      ),
+    );
+
     this.about = new AboutGroup(ctx);
 
     const close = iconButton(ICONS.close, tr('Fechar configurações'), () => this.hide(), 'ui-icon-btn--sm');
@@ -184,6 +206,7 @@ export class SettingsPopover implements UiComponent {
       this.soundGroup.el,
       h('div', { class: 'ui-set-group' }, h('h3', { text: tr('Idioma') }), this.language.row),
       this.demoGroup,
+      this.remoteGroup,
       this.about.el,
     );
     this.el.addEventListener('toggle', () => {
@@ -234,6 +257,14 @@ export class SettingsPopover implements UiComponent {
     this.ctx.root.classList.toggle('has-popover', this.isOpen);
   }
 
+  private async logout(): Promise<void> {
+    this.logoutBtn.disabled = true;
+    if (!(await remoteLogout())) {
+      this.logoutBtn.disabled = false;
+      this.ctx.announce(tr('Não foi possível sair: sem resposta do servidor.'));
+    }
+  }
+
   render(): void {
     const p = this.ctx.prefs;
     for (const [key, r] of this.switches) {
@@ -247,7 +278,8 @@ export class SettingsPopover implements UiComponent {
     this.theme.set(p.theme);
     this.language.set(savedLanguage());
     this.soundGroup.render();
-    setHidden(this.demoGroup, this.ctx.store.mock);
+    setHidden(this.demoGroup, this.ctx.store.mock || access().remote);
+    setHidden(this.remoteGroup, !access().remote);
     this.about.render();
 
     const notif = this.switches.get('browserNotifications')!;

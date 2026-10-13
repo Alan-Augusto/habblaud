@@ -3,7 +3,8 @@
 // sessão, que a usa quando fica ociosa). Fica na gaveta do agente e no rodapé do
 // terminal (só a sessão ao vivo). Enter manda, Shift+Enter quebra a linha; a linha de situação acompanha a entrega
 // (GET /api/messages/:id) até ela se resolver. As teclas digitadas aqui não disparam os atalhos globais. O rascunho de
-// cada agente fica guardado (só na memória) ao trocar de agente. A lógica pura está em ui/composer-model.ts.
+// cada agente fica guardado (só na memória) ao trocar de agente. O microfone (ui/dictation.ts, Whisper local no Mac)
+// põe o texto ditado no cursor; aparece quando o ditado funciona daqui. A lógica pura está em ui/composer-model.ts.
 import { MESSAGE_MAX } from '../../../shared/messages';
 import type { AgentInfo, OutboxMessage, Provider } from '../../../shared/types';
 import {
@@ -23,8 +24,9 @@ import {
   type SendState,
 } from './composer-model';
 import type { UiContext } from './context';
+import { DictationButton, dictationAvailable, insertDictation } from './dictation';
 import { h, setAttr, setHidden, setText, setTitle } from './dom';
-import { isLocalHostname } from './permission';
+import { access } from '../net/access';
 import { tr } from '../../../shared/i18n';
 
 export type ComposerVariant = 'drawer' | 'terminal';
@@ -56,6 +58,13 @@ export class MessageComposer {
   private hint: HTMLElement;
   private tip: HTMLElement | null;
   private status: HTMLElement;
+  private dictate: DictationButton;
+  /** Linha do ditado (gravando, transcrevendo, idioma, erro). */
+  private dictStatus: HTMLElement;
+  private dictTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Rascunho que recebe o ditado em andamento (o agente pode mudar enquanto o Mac transcreve). */
+  private dictKey = '';
+  private canDictate = false;
 
   constructor(
     private ctx: UiContext,
@@ -85,9 +94,17 @@ export class MessageComposer {
       },
       term ? '↵' : tr('Enviar'),
     );
-    this.row = h('div', { class: `ui-msg__row${term ? ' ui-term__prompt' : ''}` });
+    this.dictStatus = h('p', { class: 'ui-msg__status ui-msg__dictation', role: 'status', hidden: true, attrs: { 'aria-live': 'polite' } });
+    this.dictate = new DictationButton(
+      (t) => this.insertDictated(t.text),
+      (text, error) => this.sayDictation(text, error),
+      { compact: true, onStart: () => (this.dictKey = this.agentId) },
+    );
+    this.dictate.el.classList.add('ui-msg__mic');
+    setHidden(this.dictate.el, true);
+    this.row = h('div', { class: `ui-msg__row${term ? ' ui-term__prompt ui-term__prompt--mic' : ''}` });
     if (term) this.row.append(h('span', { class: 'ui-term__caret', text: '>', attrs: { 'aria-hidden': 'true' } }));
-    this.row.append(this.box, this.sendBtn);
+    this.row.append(this.box, this.dictate.el, this.sendBtn);
     // Clique na "linha do prompt" (fora do botão) põe o cursor na caixa, como num terminal.
     this.row.addEventListener('mousedown', (e) => {
       if (e.target === this.row && !this.box.disabled) {
@@ -98,7 +115,7 @@ export class MessageComposer {
     this.hint = h('p', { class: 'ui-msg__hint', hidden: true });
     this.status = h('p', { class: 'ui-msg__status', role: 'status', hidden: true, attrs: { 'aria-live': 'polite' } });
     this.tip = term ? null : h('p', { class: 'ui-msg__tip', text: composerTip() });
-    this.el = h('div', { class: `ui-msg ui-msg--${variant}` }, this.hint, this.row, this.status, this.tip);
+    this.el = h('div', { class: `ui-msg ui-msg--${variant}` }, this.hint, this.row, this.dictStatus, this.status, this.tip);
   }
 
   /**
@@ -109,7 +126,7 @@ export class MessageComposer {
     const store = this.ctx.store;
     const mode = composerMode(agent, {
       enabled: store.mock || !!store.snapshot?.meta.messages,
-      local: store.mock || isLocalHostname(location.hostname),
+      local: store.mock || access().messages,
       replaying: store.replaying,
     });
     this.mode = mode;
@@ -120,6 +137,8 @@ export class MessageComposer {
     // Troca de agente (ou a caixa passou a valer/deixou de valer): o conteúdo vem do rascunho guardado.
     const shown = `${key}|${ready}`;
     if (shown !== this.shown) {
+      // Gravando para outro agente: para sem transcrever (a fala era para aquele).
+      this.dictate.cancel();
       this.shown = shown;
       this.agentId = key;
       this.box.value = ready ? (this.drafts.get(key) ?? '') : '';
@@ -134,6 +153,14 @@ export class MessageComposer {
     setTitle(this.box, ready ? '' : mode.text);
     this.row.classList.toggle('is-disabled', !ready);
     setHidden(this.sendBtn, !ready);
+    // Consulta em cache (30 s): o Mac pode instalar o Whisper ou parar o auxiliar com a página aberta.
+    void dictationAvailable().then((ok) => {
+      if (ok === this.canDictate) return;
+      this.canDictate = ok;
+      this.ctx.invalidate();
+    });
+    // Transcrevendo: o botão fica até o texto chegar (ele vai para o rascunho de quem ditou).
+    setHidden(this.dictate.el, !this.canDictate || (!ready && !this.dictate.busy));
     // Na gaveta, a dica do plugin entra no lugar da caixa; no terminal ela já está no lugar do texto.
     setHidden(this.row, !term && !ready);
     if (this.tip) {
@@ -171,6 +198,33 @@ export class MessageComposer {
       e.preventDefault();
       void this.send();
     }
+  }
+
+  /** Texto ditado: no cursor, se a caixa ainda é a de quem ditou; senão, no fim do rascunho daquele agente. */
+  private insertDictated(text: string): void {
+    const key = this.dictKey;
+    if (key === this.agentId && !this.box.disabled) {
+      const box = this.box;
+      const { value, caret } = insertDictation(box.value, box.selectionStart ?? box.value.length, box.selectionEnd ?? box.value.length, text);
+      box.value = value.slice(0, MESSAGE_MAX);
+      this.drafts.set(key, box.value);
+      this.resize();
+      this.syncButton();
+      box.focus({ preventScroll: true });
+      box.setSelectionRange(caret, caret);
+    } else {
+      const cur = this.drafts.get(key) ?? '';
+      this.drafts.set(key, insertDictation(cur, cur.length, cur.length, text).value.slice(0, MESSAGE_MAX));
+    }
+  }
+
+  private sayDictation(text: string, error = false): void {
+    if (this.dictTimer) clearTimeout(this.dictTimer);
+    setText(this.dictStatus, text);
+    setHidden(this.dictStatus, !text);
+    this.dictStatus.classList.toggle('is-error', error);
+    // Avisos de sucesso somem sozinhos; "Gravando…" e "Transcrevendo…" ficam até a próxima mudança.
+    if (!error && !/…$/.test(text)) this.dictTimer = setTimeout(() => setHidden(this.dictStatus, true), 6_000);
   }
 
   private syncButton(): void {

@@ -21,6 +21,8 @@ services:
     # (HABBLAUD_BIND=0.0.0.0 no .env libera a rede local; veja o README).
     ports:
       - "${HABBLAUD_BIND:-127.0.0.1}:${HABBLAUD_PORT:-4747}:4747"
+      # A porta do acesso pelo celular (com login) só é publicada depois do npm run remote:setup: quem a junta é o
+      # docker-compose.override.yml que o docker:up gera.
     volumes:
       - habblaud-data:/data
     # Opções que podem vir do .env (ou do ambiente) para dentro do container.
@@ -37,6 +39,14 @@ services:
       HABBLAUD_LANG: ${HABBLAUD_LANG:-}
       # 0 desliga as sessões do Codex no escritório.
       HABBLAUD_CODEX: ${HABBLAUD_CODEX:-}
+      # 1 liga o Novo agente pelo escritório (no Docker, quem começa a sessão é o auxiliar do host, npm run
+      # codex:bridge; o terminal interativo em si não roda no container).
+      HABBLAUD_PTY: ${HABBLAUD_PTY:-}
+      # Acesso remoto com login (server/http/remote.ts).
+      HABBLAUD_REMOTE_USER: ${HABBLAUD_REMOTE_USER:-}
+      HABBLAUD_REMOTE_PASSWORD_HASH: ${HABBLAUD_REMOTE_PASSWORD_HASH:-}
+      HABBLAUD_REMOTE_ALLOW: ${HABBLAUD_REMOTE_ALLOW:-}
+      HABBLAUD_REMOTE_INSECURE_HTTP: ${HABBLAUD_REMOTE_INSECURE_HTTP:-}
     # Endurecimento: sistema de arquivos só leitura (exceto /data e /tmp), sem capabilities extras.
     read_only: true
     # /tmp em memória, com teto: sem `size` o Docker deixa usar metade da RAM do host.

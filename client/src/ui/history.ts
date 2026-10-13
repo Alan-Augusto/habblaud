@@ -4,6 +4,7 @@
 // do agente. Só existe com o terminal ligado (acesso local). O agrupamento, a busca e a validação da resposta são
 // puros e testados em ui/history.test.ts; a montagem usa só textContent. Sessões do Codex vêm com o selo "Codex" e a
 // busca acha "codex".
+import { access } from '../net/access';
 import type { RecentSession } from '../../../shared/types';
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText, setTitle } from './dom';
@@ -205,7 +206,7 @@ export class HistoryPopover implements UiComponent {
 
   /** Recurso disponível (terminal ligado: acesso local e servidor real). */
   private get available(): boolean {
-    return !!this.ctx.store.snapshot?.meta.terminal && !this.ctx.store.mock;
+    return !!this.ctx.store.snapshot?.meta.terminal && access().terminal && !this.ctx.store.mock;
   }
 
   toggle(): void {

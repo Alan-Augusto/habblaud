@@ -246,6 +246,13 @@ describe('rodadas', () => {
     expect(w.sent).toEqual([])
   })
 
+  test('sessão do app desktop fora da tela (SDK sem superfície): pergunta mesmo assim', async ($, on) => {
+    const w = world(on, { surfaces: [], env: { HOME: '/home/fulano', CLAUDE_CODE_ENTRYPOINT: 'claude-desktop', HABBLAUD_PORT: PORT } })
+    await $.session.start({ cwd: '/work', surface: null, isInteractive: false })
+    await w.clock.advance(2_000)
+    expect(w.inboxes().length).toBe(1)
+  })
+
   test('sem HOME nem CLAUDE_CONFIG_DIR: pergunta sem a conta, na porta padrão', async ($, on) => {
     const w = world(on, { env: {} })
     await $.session.start(START)

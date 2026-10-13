@@ -207,7 +207,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
       if (!Number.isInteger(port) || port <= 0 || port >= 65_536) throw new FatalError(tr('--port precisa de um número entre 1 e 65535.'));
     } else if (a === '--timeout') {
       timeoutS = Number(argv[++i]);
-      if (!Number.isInteger(timeoutS) || timeoutS < 5 || timeoutS > 1_800) throw new FatalError(tr('--timeout precisa de um número de segundos entre 5 e 1800.'));
+      if (!Number.isInteger(timeoutS) || timeoutS < 5 || timeoutS > 86_400) throw new FatalError(tr('--timeout precisa de um número de segundos entre 5 e 86400 (24 h).'));
     } else if ((a === 'install' || a === 'uninstall' || a === 'status') && !command) command = a;
     else throw new FatalError(tr('opção desconhecida: {0}\n\n{1}', [a, USAGE]));
   }

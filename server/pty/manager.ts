@@ -9,10 +9,10 @@
 //
 // Segurança: quem controla um terminal destes executa comandos na máquina. O recurso é opt-in (HABBLAUD_PTY=1),
 // as rotas só aceitam conexões do próprio computador (ver http/pty.ts) e ele fica desligado no Docker.
-import { accessSync, chmodSync, constants, readFileSync, statSync } from 'node:fs';
+import { chmodSync, readFileSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createRequire } from 'node:module';
-import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import type { PtyInfo, PtyStatus } from '../../shared/types';
 import { frame } from '../http/sse';
 import { errMsg, log } from '../log';
@@ -20,6 +20,9 @@ import { pidAlive } from '../sources/registry';
 import { readProcInfo, sameProcess, type ProcInfo, type RegisteredProc } from './procinfo';
 import { killWithConsoleReset } from './winkill';
 import { tr } from '../../shared/i18n';
+import { isExecutableFile } from '../claude-bin';
+
+export { claudeBinFrom, findExecutable, isExecutableFile } from '../claude-bin';
 
 /** O que o gerenciador usa do node-pty (permite trocar nos testes). */
 export interface PtyProcess {
@@ -598,40 +601,4 @@ export function spawnProblem(spawn: SpawnPty, timeoutMs = 5_000): Promise<string
       ok(exitCode === 0 ? null : tr('node-pty abriu o terminal de teste, mas ele saiu com o código {0}', [exitCode]));
     });
   });
-}
-
-/** O arquivo existe e pode ser executado (no Windows basta existir: lá não há permissão de execução). */
-export function isExecutableFile(file: string, platform: NodeJS.Platform = process.platform): boolean {
-  try {
-    if (!statSync(file).isFile()) return false;
-    if (platform !== 'win32') accessSync(file, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Procura um executável no PATH (no Windows, também com as extensões de PATHEXT, se o nome não tiver uma). */
-export function findExecutable(name: string, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string | undefined {
-  const sep = platform === 'win32' ? ';' : ':';
-  const exts =
-    platform === 'win32' && !extname(name) ? ['.exe', ...(env.PATHEXT ?? '.COM;.CMD;.BAT').split(';').filter(Boolean).map((e) => e.toLowerCase())] : [''];
-  const dirs = (env.PATH ?? env.Path ?? '').split(sep).filter(Boolean);
-  for (const dir of dirs) {
-    for (const ext of exts) {
-      const file = resolve(dir, name + ext);
-      if (isExecutableFile(file, platform)) return file;
-    }
-  }
-  return undefined;
-}
-
-/**
- * O executável do Claude Code que o terminal interativo abre: HABBLAUD_CLAUDE_BIN (um caminho, ou um nome procurado
- * no PATH) ou o `claude` do PATH. undefined se não achar.
- */
-export function claudeBinFrom(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string | undefined {
-  const set = env.HABBLAUD_CLAUDE_BIN?.trim();
-  if (!set) return findExecutable('claude', env, platform);
-  return /[\\/]/.test(set) ? resolve(set) : findExecutable(set, env, platform);
 }

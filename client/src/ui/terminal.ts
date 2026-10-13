@@ -370,8 +370,17 @@ export function terminalFooter(agent: AgentInfo | undefined, agents: readonly Ag
       const act = agent.activity?.text?.trim().replace(/(?:…|\.{1,3})$/, '');
       return { kind: 'working', text: `${act || tr('Trabalhando')}…`, since: agent.statusSince };
     }
-    case 'waiting':
-      return { kind: 'waiting', text: agent.waitingFor ? tr('Esperando você: {0}', [agent.waitingFor]) : tr('Esperando você'), since: agent.statusSince };
+    case 'waiting': {
+      const text = agent.waitingFor ? tr('Esperando você: {0}', [agent.waitingFor]) : tr('Esperando você');
+      if (agent.permission) return { kind: 'waiting', text, since: agent.statusSince };
+      // Sem o pedido no Habblaud (o hook já devolveu à sessão, a sessão abriu sem o plugin ou não havia página aberta
+      // quando ele chegou): os botões não vêm, então diz onde responder.
+      const hint =
+        agent.provider === 'codex'
+          ? tr('{0} · responda no Codex: este pedido não chegou ao Habblaud ou passou do tempo de espera', [text])
+          : tr('{0} · responda no Claude Code: este pedido não chegou ao Habblaud ou passou do tempo de espera', [text]);
+      return { kind: 'waiting', text: hint, since: agent.statusSince };
+    }
     default:
       return { kind: 'idle', text: tr('Aguardando o próximo prompt') };
   }

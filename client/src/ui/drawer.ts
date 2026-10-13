@@ -38,7 +38,8 @@ import {
   taskProgress,
   visibleShells,
 } from './model';
-import { isLocalHostname, PermissionCard } from './permission';
+import { access } from '../net/access';
+import { PermissionCard } from './permission';
 import { canRenameRoom } from './roomrename';
 import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, providerOf } from './provider';
 import { ptyControllable } from './ptyapi';
@@ -215,6 +216,9 @@ class AgentView {
   private followBtn: HTMLButtonElement;
   private termBtn: HTMLButtonElement;
   private termLabel: HTMLElement;
+  /** Por que o terminal não abre: no celular não há hover para ler o title, então o toque mostra o motivo aqui. */
+  private termWhy: HTMLElement;
+  private termWhyTimer: ReturnType<typeof setTimeout> | null = null;
   private alert: HTMLElement;
   private alertText: HTMLElement;
   /**
@@ -315,6 +319,8 @@ class AgentView {
       h('kbd', { class: 'ui-kbd', text: 'T', attrs: { 'aria-hidden': 'true' } }),
     );
 
+    this.termWhy = h('p', { class: 'ui-term-cta__why', hidden: true, attrs: { role: 'status' } });
+
     this.alertText = h('p', { class: 'ui-alert__text' });
     this.alertQuestions = h('div', { class: 'ui-ask', hidden: true });
     this.alertAnswerHint = h('p', { class: 'ui-ask__answer-hint', hidden: true, text: tr('Com o plugin habblaud-permissoes (npm run mod:install), dá para responder as perguntas por aqui.') });
@@ -351,6 +357,8 @@ class AgentView {
     const nowSec = section(tr('Agora'), h('div', { class: 'ui-now' }, this.actIcon, h('div', { class: 'ui-now__body' }, this.actText, this.actTime)), this.actDetails);
     this.composer = new MessageComposer(ctx, 'drawer');
     this.msgSec = section(tr('Mandar mensagem'), this.composer.el);
+    // No celular a caixa fica presa no rodapé da gaveta enquanto a conversa rola (styles.css, .ui-sec--msg).
+    this.msgSec.el.classList.add('ui-sec--msg');
     this.social = new SocialSection(ctx);
     this.perm = new PermissionCard(ctx);
 
@@ -404,6 +412,7 @@ class AgentView {
       this.gone,
       statusRow,
       this.termBtn,
+      this.termWhy,
       this.alert,
       this.perm.el,
       this.shellBox,
@@ -483,7 +492,18 @@ class AgentView {
 
   /** Abre (ou fecha) o terminal deste agente; desligado sem acesso local ou depois que ele saiu. */
   toggleTerminal(): void {
-    if (!this.id || this.termBtn.getAttribute('aria-disabled') === 'true') return;
+    if (!this.id) return;
+    if (this.termBtn.getAttribute('aria-disabled') === 'true') {
+      // No celular não há hover para ler a dica: o toque mostra o motivo embaixo do botão.
+      const why = this.termBtn.title;
+      setText(this.termWhy, why);
+      setHidden(this.termWhy, false);
+      this.ctx.announce(why);
+      if (this.termWhyTimer) clearTimeout(this.termWhyTimer);
+      this.termWhyTimer = setTimeout(() => setHidden(this.termWhy, true), 8_000);
+      return;
+    }
+    setHidden(this.termWhy, true);
     if (this.ctx.terminals) this.ctx.terminals.toggle(this.id, this.termBtn);
     else this.terminal.toggle(this.id, this.termBtn);
   }
@@ -563,7 +583,7 @@ class AgentView {
     // Sem o pedido no escritório: dá para responder por aqui com o plugin (só com a trava local, como o cartão). O Codex
     // não responde perguntas pelo escritório.
     const answerable =
-      !codex && !!asking?.questions?.length && !this.perm.visible && !this.ctx.store.mock && !!this.ctx.store.snapshot?.meta.terminal && isLocalHostname(location.hostname);
+      !codex && !!asking?.questions?.length && !this.perm.visible && !this.ctx.store.mock && !!this.ctx.store.snapshot?.meta.terminal && access().permissions;
     setHidden(this.alertAnswerHint, !answerable);
 
     // Esperando o shell.
@@ -672,7 +692,7 @@ class AgentView {
 
   private renderTerminalButton(live: boolean, provider = providerOf(this.last)): void {
     const router = this.ctx.terminals;
-    const available = router ? router.available : !!this.ctx.store.snapshot?.meta.terminal;
+    const available = (router ? router.available : !!this.ctx.store.snapshot?.meta.terminal) && access().terminal;
     const open = (router ? router.openAgentId : this.terminal.agentId) === this.id;
     // Interativo: o Claude Code roda aqui (pty) ou roda noutro terminal e dá para assumir pela janela.
     const readOnly = !!this.ctx.store.snapshot?.meta.terminal;
@@ -680,6 +700,7 @@ class AgentView {
     setText(this.termRo, kind === 'interativo' ? tr('interativo') : kind === 'ao vivo' ? tr('ao vivo') : kind ? tr('em outro terminal') : '');
     // aria-disabled (e não disabled): o botão continua focável e a dica do porquê aparece no hover.
     const enabled = open || (available && live);
+    if (enabled) setHidden(this.termWhy, true);
     setAttr(this.termBtn, 'aria-disabled', enabled ? null : 'true');
     this.termBtn.classList.toggle('is-disabled', !enabled);
     setAttr(this.termBtn, 'aria-pressed', String(open));
@@ -692,7 +713,9 @@ class AgentView {
         : !available
           ? this.ctx.store.replaying
             ? tr('Sem terminal no timelapse: a conversa é a de agora, não a do momento reproduzido.')
-            : TERMINAL_UNAVAILABLE_HINT
+            : this.ctx.store.snapshot?.meta.terminal && access().remote
+              ? tr('O terminal não está liberado no acesso remoto (HABBLAUD_REMOTE_ALLOW).')
+              : TERMINAL_UNAVAILABLE_HINT
           : !live
             ? tr('O agente já saiu do escritório.')
             : kind === 'ao vivo'

@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 export const DEFAULT_PORT = 4747;
 export const DEFAULT_TIMEOUT_S = 300;
 const MIN_TIMEOUT_S = 5;
-const MAX_TIMEOUT_S = 1_800;
+const MAX_TIMEOUT_S = 86_400;
 /** Espera máxima de cada long-poll (o servidor responde "pending" e o hook pergunta de novo). */
 const WAIT_S = 25;
 /** Registrar o pedido: se o Habblaud não responder nisso, ele está fora do ar (ou travado). */

@@ -243,6 +243,60 @@ Then open `http://<ip-do-computador>:4747` on your phone (on macOS: `ipconfig ge
 > only on trusted networks. The [terminal](#terminal) (and with it, answering and sending messages from the office) stays
 > off while the port is exposed. To go back: delete `.env` and run `npm run docker:up -- --no-build`.
 
+#### Phone with login and HTTPS (approving requests)
+
+Instead of exposing the main port, open a **second port with a username, a password and HTTPS**. Port 4747 stays on the
+computer only (hooks, plugins and your browser keep working without a login); the remote port goes to the network and
+every request on it requires a login. What separates the two is the port the connection arrived on, never the Host
+header. Nothing of this exists until you run the setup: without it, no extra port is published.
+
+```bash
+npm run remote:setup   # usuário, senha, nome do endereço e (opcional) um endereço próprio
+npm run docker:up
+```
+
+`remote:setup` writes only the password **hash** (scrypt) to `.env`, creates a local CA and the server certificate in
+`~/.habblaud/remote-tls`, and leaves a service announcing `<nome>.local` on the network (mDNS; LaunchAgent on macOS,
+systemd on Linux). Open `https://<nome>.local` on your phone (with `:4748` if port 443 was taken). The first time,
+accept the warning, tap **Install the Habblaud certificate** and trust it (iPhone: Settings › Profile Downloaded ›
+Install, then Settings › General › About › Certificate Trust Settings; Android: Security › Encryption & credentials ›
+Install a certificate › CA certificate), checking the fingerprint the setup showed.
+
+- **Restricted CA:** it only signs `localhost`, `.local` names, your own address and private-network IPs. Even if its
+  key leaked, a certificate for any other site would be rejected by the phone that trusts it. Changing your own
+  address creates a new CA (install the certificate on the phone again). The CA key never goes into the container.
+- **Own address** (e.g. `meuclaude.home`): goes into the certificate, but the phone only finds it with an entry in the
+  router's DNS pointing to the computer's IP. `<nome>.local` works without configuring anything.
+- **What the phone can do:** by default, approve and deny permission requests. `HABBLAUD_REMOTE_ALLOW` in `.env`
+  accepts `permissions`, `messages`, `terminal` and `spawn`, separated by commas, or `none` (view only). The
+  interactive terminal never works from the phone.
+- **Deliveries** (phone, with `terminal` allowed): the box button in the top bar lists what each agent finished, with
+  a summary and attachments (screenshots, PDFs, files it sent) that open with a tap.
+- **New agent** (the **+** button): starts a Claude Code session in the background on the computer (`claude --bg`, in
+  the chosen folder), which shows up in the office and receives messages and permission requests through Habblaud. In
+  a folder Claude Code doesn't trust yet, it opens the Claude app's new-session screen filled in, and you press Enter
+  there. **It comes turned off:** it needs `HABBLAUD_PTY=1` (the same opt-in as the
+  [interactive terminal](#interactive-terminal-take-over-new-session-and-end); in Docker, put it in `.env` and keep
+  `npm run codex:bridge` running on the computer) and, from the phone, `spawn` in `HABBLAUD_REMOTE_ALLOW` too.
+- **Dictation** (in New agent and in the message box): needs `whisper-cli` and `ffmpeg` (`brew install whisper-cpp
+  ffmpeg`) and a multilingual model in `~/.local/share/whisper/` (`ggml-small.bin` gets more right than
+  `ggml-base.bin`; the `.en` ones only understand English). Without them, the Dictate button doesn't show up. The
+  voice never leaves the computer. `HABBLAUD_WHISPER_BIN`, `HABBLAUD_FFMPEG_BIN`, `HABBLAUD_WHISPER_MODEL` and
+  `HABBLAUD_DICTATION_LANGS` (default `pt,en`) adjust it.
+- **Away from home (Tailscale):** with Tailscale on the computer and on the phone, `tailscale serve --bg --https=443
+  https+insecure://127.0.0.1:443` publishes the remote port (with login) only to your devices, with a valid
+  certificate at `https://<computador>.<tailnet>.ts.net`; add that name to `HABBLAUD_ALLOWED_HOSTS`. Always point it at
+  the remote port, never at 4747 (which has no login).
+- **Session:** 30 days; changing the password (running the setup again) ends all of them, and **Settings › Phone
+  access › Sign out** ends the one on that device. After 5 wrong passwords in a row, each new attempt waits from 1 s up to 5 min.
+- **IP changed?** `docker:up` re-issues the server certificate when the new IP is missing or when it's 30 days from
+  expiring, with the same CA (the phone keeps trusting it); the server swaps the certificate without restarting.
+- **Turn off:** `npm run remote:setup -- --off` and `npm run docker:up`.
+
+Without HTTPS the remote port doesn't start; `HABBLAUD_REMOTE_INSECURE_HTTP=1` forces plain HTTP (password and cookie
+in the clear on the network). In Node mode: `HABBLAUD_REMOTE_PORT` and `HABBLAUD_REMOTE_HOST` (default
+`0.0.0.0:4748`) and `HABBLAUD_REMOTE_TLS_DIR` (default `~/.habblaud/remote-tls/server`).
+
 ### Updating
 
 The version in use shows up in the top bar, next to "Connected", and in **Settings › About**. Every 6 hours
@@ -474,10 +528,13 @@ terminal** leaves the question there. The answer reaches the agent as if you had
 - The request goes through a Claude Code `PermissionRequest` hook (the plugin's, or the old way's), which only diverts it
   when there's **some Habblaud page open** on this computer; with Habblaud stopped or no page open, it
   exits right away and the terminal carries on as usual.
-- With no answer from the office within 5 minutes, the request goes back to being answerable only in the terminal (the plugin's options are in
+- With no answer from the office within 5 minutes (up to 24 h with `HABBLAUD_PERMISSION_TIMEOUT=86400` in the `env`
+  of `settings.json`), the request goes back to being answerable only in the terminal (the plugin's options are in
   [`mod/README.md`](mod/README.md); in the old way, `npm run hooks:install -- --timeout 120` changes the time and
   `--port`, the port). For **background subagents**, Claude Code only shows the dialog in the terminal after the
-  hook finishes: answer from the office or use **Answer in terminal**.
+  hook finishes: answer from the office or use **Answer in terminal**. With a wait longer than 5 minutes, if no
+  page that can answer stays open for 5 minutes (and no [phone with login](#phone-with-login-and-https-approving-requests)
+  is set up to answer), the request goes back to the terminal.
 - It works under the same safeguard as the terminal: only with Habblaud reachable only from the computer it runs on
   and opened through `http://localhost`. Check with `npm run mod:status` (or `npm run hooks:status`, in the old
   way).
@@ -663,8 +720,9 @@ Everything works without configuring anything. If you need to adjust something, 
 | `HABBLAUD_DEMO` | off | `1` turns on demo mode at startup. |
 | `HABBLAUD_ALLOWED_HOSTS` | — | Extra names accepted in the address (e.g. `meu-mac.local`), besides `localhost` and IPs. |
 | `HABBLAUD_TERMINAL` | on (local access only) | `0` turns off the terminal, answering and sending messages from the office, and the character editor. With the port exposed they're already off, with no way to turn them on. |
-| `HABBLAUD_PTY` | off | `1` turns on the interactive terminal (open, take over and end Claude Code sessions from the office). Local access only and outside Docker; read the warning in [Privacy and security](#privacy-and-security). |
-| `HABBLAUD_CLAUDE_BIN` | `claude` from PATH | The Claude Code executable that the interactive terminal opens. |
+| `HABBLAUD_PTY` | off | `1` turns on the interactive terminal (open, take over and end Claude Code sessions from the office; local access only and outside Docker) and **New agent** (also in Docker, through `npm run codex:bridge`). Read the warning in [Privacy and security](#privacy-and-security). |
+| `HABBLAUD_CLAUDE_BIN` | `claude` from PATH | The Claude Code executable that the interactive terminal and New agent run. |
+| `HABBLAUD_REMOTE_ALLOW` | `permissions` | What the [phone with login](#phone-with-login-and-https-approving-requests) can do: `permissions`, `messages`, `terminal`, `spawn` (comma-separated) or `none`. The other `HABBLAUD_REMOTE_*` are written by `npm run remote:setup`. |
 | `HABBLAUD_MENSAGENS` | on (with the terminal) | `0` turns off only messages from the office (the box in the terminal and in the agent's details). |
 | `HABBLAUD_CODEX` | on | `0` turns off Codex in the office. |
 | `HABBLAUD_CODEX_DIRS` | automatic detection | Codex folders, comma-separated (instead of `~/.codex*` and `CODEX_HOME`). |
@@ -674,7 +732,8 @@ Everything works without configuring anything. If you need to adjust something, 
 | `HABBLAUD_ACCOUNTS` | — | JSON to customize name, letter or color, matched by the account folder name. E.g. `[{"id":".claude-conta2","name":"Trabalho","short":"T","color":"#5cc97b"}]`. |
 
 **In Docker**, `HABBLAUD_PORT`, `HABBLAUD_BIND`, `HABBLAUD_ALLOWED_HOSTS`, `HABBLAUD_DEMO`, `HABBLAUD_TERMINAL`,
-`HABBLAUD_MENSAGENS`, `HABBLAUD_CODEX`, `HABBLAUD_UPDATE_CHECK` and `HABBLAUD_LANG` apply (in `.env` or in the environment), as do `HABBLAUD_CLAUDE_DIRS`, `HABBLAUD_CODEX_DIRS`, `HABBLAUD_USAGE_DIR` and
+`HABBLAUD_MENSAGENS`, `HABBLAUD_CODEX`, `HABBLAUD_UPDATE_CHECK`, `HABBLAUD_LANG`, `HABBLAUD_PTY` and the
+`HABBLAUD_REMOTE_*` apply (in `.env` or in the environment), as do `HABBLAUD_CLAUDE_DIRS`, `HABBLAUD_CODEX_DIRS`, `HABBLAUD_USAGE_DIR` and
 `HABBLAUD_ACCOUNTS` (read by `docker:up` on the host); the rest are fixed inside the container. Options: `npm run docker:up -- --no-build` (starts without rebuilding),
 `npm run docker:down` (stops) and `npm run docker:logs` (follows the logs).
 
@@ -751,6 +810,7 @@ More server details in [`server/README.md`](server/README.md).
 | `<conta>/projects/` | `/claude/<conta>/projects` (read-only) | Transcripts of the sessions and subagents. |
 | `~/.habblaud/usage/` | `/usage` (read-only) | Usage captured by the mod (or by the statusline tap). |
 | `habblaud-data` volume | `/data` | Habblaud's own data (character names, the timelapse timeline and the My day stats). |
+| `~/.habblaud/remote-tls/server/` | `/remote-tls` (read-only) | Only after `npm run remote:setup`: the server certificate and key of the [phone with login](#phone-with-login-and-https-approving-requests) (never the CA key). |
 
 The account folder is **never** mounted whole (credentials and settings live there). The container runs as an unprivileged
 user, with a read-only file system, no extra capabilities and with `no-new-privileges`. The accounts'
@@ -816,6 +876,18 @@ metadata (letter, email, organization) is read on the host by `docker:up` and pa
   gets that power. Before ending a process from outside, Habblaud checks in the session registry and in the system that
   that PID is still that Claude Code (same start time and executable). On shared computers or with agents
   running unsupervised, leave it off.
+- **Phone with login, opt-in:** only exists after `npm run remote:setup`. A second port with HTTPS (a local CA that only
+  signs `.local` names, `localhost`, your own address and private IPs), a username and a password (only the scrypt
+  hash is stored); the session is an `HttpOnly`, `SameSite=Strict`, `Secure` cookie signed with HMAC. On that port,
+  what is allowed comes from `HABBLAUD_REMOTE_ALLOW` (by default, only answering permission requests), never from the
+  Host header; the routes of the hooks, the plugins and the host helper, the interactive terminal, the character editor
+  and renaming rooms never work through it. Whoever has the password gets what you allowed: choose a strong one and
+  allow only what you need. The CA key stays in `~/.habblaud/remote-tls/ca` and never goes into the container.
+- **New agent, opt-in:** with `HABBLAUD_PTY=1`, the office starts Claude Code sessions with the request you wrote, in
+  the folder you choose — the same warning as the interactive terminal applies. Attachments are written to
+  `~/.habblaud/attachments/` (folder 700, files 600). In Docker, whoever starts the sessions is the host helper
+  (`npm run codex:bridge`), which also reads the delivery files only from known project folders (the ones Claude Code
+  has in `<conta>/projects`), the temporary folder and the attachments.
 - **Character editor, local only:** saving or going back to random changes the office and writes to `names.json`, so it
   follows the same safeguard as the terminal (local bind, local `Host`, no proxies or tunnels): without it, the pencil doesn't show up
   and the server answers `403`. Changes require JSON and a local origin. `HABBLAUD_TERMINAL=0` turns it off too.

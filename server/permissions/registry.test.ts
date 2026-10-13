@@ -8,7 +8,7 @@ import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
 import { appendLines, L, tempDir, writeLines } from '../test/fixtures';
-import { EXPIRY_GRACE_MS, parseDecision, pickSuggestions, PermissionRegistry, type WaitResult } from './registry';
+import { EXPIRY_GRACE_MS, parseDecision, pickSuggestions, PermissionRegistry, UNWATCHED_MS, type WaitResult } from './registry';
 import { callSignature, scanToolCall } from './transcript';
 
 setQuiet(true);
@@ -17,7 +17,7 @@ const MAIN = 'acc:1';
 const SESSION = 'sess-1';
 const SUB = `${SESSION}:a1b2c3`;
 
-function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number } = {}) {
+function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number; answerLater?: boolean } = {}) {
   let now = 1_000_000;
   const clock = { now: () => now, advance: (ms: number) => (now += ms) };
   let permissions: PermissionRegistry | undefined;
@@ -35,7 +35,14 @@ function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number 
   let viewers = opts.viewers ?? 1;
   const paths = new Map<string, string>();
   if (opts.transcript) paths.set(MAIN, opts.transcript);
-  permissions = new PermissionRegistry({ office, viewers: () => viewers, transcriptPathOf: (id) => paths.get(id), now: clock.now, orphanMs: opts.orphanMs });
+  permissions = new PermissionRegistry({
+    office,
+    viewers: () => viewers,
+    answerLater: () => !!opts.answerLater,
+    transcriptPathOf: (id) => paths.get(id),
+    now: clock.now,
+    orphanMs: opts.orphanMs,
+  });
   return { office, registry: permissions, clock, paths, setViewers: (n: number) => (viewers = n) };
 }
 
@@ -323,6 +330,33 @@ describe('PermissionRegistry: pedidos órfãos', () => {
     office.closeMain(MAIN);
     registry.tick();
     await expect(w2.result).resolves.toEqual({ status: 'released', reason: 'gone' });
+  });
+
+  it('espera longa sem nenhuma página que responda: volta ao terminal depois de UNWATCHED_MS (a espera padrão não muda)', async () => {
+    const { registry, clock, setViewers } = setup({ orphanMs: 60 * 60_000 });
+    const long = registered(registry.register(hookInput({ timeout_ms: 86_400_000 })));
+    const short = registered(registry.register(hookInput({ timeout_ms: 300_000, tool_input: { command: 'ls' } })));
+    const w = registry.wait(long, 25_000)!;
+    setViewers(0);
+    registry.tick();
+    clock.advance(UNWATCHED_MS - 1_000);
+    registry.tick();
+    expect(registry.size).toBe(2);
+    clock.advance(2_000);
+    registry.tick();
+    await expect(w.result).resolves.toEqual({ status: 'released', reason: 'unwatched' });
+    // O pedido com a espera padrão (5 min) segue até o tempo dele.
+    await expect(registry.wait(short, 10)!.result).resolves.not.toEqual({ status: 'released', reason: 'unwatched' });
+  });
+
+  it('espera longa com celular que pode entrar depois (porta remota com permissions): continua esperando', () => {
+    const { registry, clock, setViewers } = setup({ orphanMs: 60 * 60_000, answerLater: true });
+    registered(registry.register(hookInput({ timeout_ms: 86_400_000 })));
+    setViewers(0);
+    registry.tick();
+    clock.advance(UNWATCHED_MS * 3);
+    registry.tick();
+    expect(registry.size).toBe(1);
   });
 
   it('decisões não buscadas são esquecidas depois de um tempo', () => {

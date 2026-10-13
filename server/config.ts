@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoverClaudeDirs } from './accounts/detect';
 import { parseAllowedHosts } from './http/guard';
+import { parseRemoteConfig, type RemoteConfig } from './http/remote';
 import { parseGithubRepo } from './updates/checker';
 import { tr } from '../shared/i18n';
 
@@ -51,6 +52,10 @@ export interface ServerConfig {
   updateCheck: boolean;
   /** Observa as sessões do Codex (sources/codex/); HABBLAUD_CODEX=0 desliga. */
   codex: boolean;
+  /** Segunda porta, com login, para o celular na rede local (http/remote.ts); ausente = desligada. */
+  remote?: RemoteConfig;
+  /** Por que o acesso remoto ficou desligado quando as variáveis estão incompletas. */
+  remoteWarning?: string;
 }
 
 export function isTruthy(v: string | undefined): boolean {
@@ -151,6 +156,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
   const rootDir = findRoot(dirname(fileURLToPath(import.meta.url)));
   const host = env.HABBLAUD_HOST?.trim() || '127.0.0.1';
   const pkg = readPackage(rootDir);
+  const remote = parseRemoteConfig(env, inDocker);
   return {
     port: Number.isFinite(port) && port > 0 && port < 65536 ? port : 4747,
     host,
@@ -170,5 +176,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
     repo: pkg.repo,
     updateCheck: !env.HABBLAUD_UPDATE_CHECK?.trim() || isTruthy(env.HABBLAUD_UPDATE_CHECK),
     codex: !env.HABBLAUD_CODEX?.trim() || isTruthy(env.HABBLAUD_CODEX),
+    remote: remote.config,
+    remoteWarning: remote.warning,
   };
 }

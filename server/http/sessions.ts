@@ -20,6 +20,8 @@ export interface SessionRoutesDeps {
   history?: SessionLookup;
   /** Ausente = terminal desligado. */
   terminals?: TerminalStreams;
+  /** Porta remota (http/remote.ts): a decisão já tomada pela API; ausente = trava do Host local, como antes. */
+  trusted?: boolean;
 }
 
 const RECENT_ROUTE = '/api/sessions/recent';
@@ -27,9 +29,10 @@ const RECENT_ROUTE = '/api/sessions/recent';
 const TERMINAL_ROUTE = /^\/api\/sessions\/([^/]+)\/([^/]+)\/terminal$/;
 
 /** Por que a trava recusa a requisição (undefined = liberada): os mesmos textos do terminal do agente. */
-export function sessionsLockError(enabled: boolean, host: string | undefined): string | undefined {
+export function sessionsLockError(enabled: boolean, host: string | undefined, trusted?: boolean): string | undefined {
   if (!enabled) return tr('terminal desligado: ele só funciona com o Habblaud acessível apenas pelo próprio computador');
-  if (!isLoopbackHost(host)) return tr('o terminal só abre pelo próprio computador (http://localhost ou http://127.0.0.1)');
+  if (trusted === false) return tr('não liberado no acesso remoto (veja HABBLAUD_REMOTE_ALLOW)');
+  if (trusted === undefined && !isLoopbackHost(host)) return tr('o terminal só abre pelo próprio computador (http://localhost ou http://127.0.0.1)');
   return undefined;
 }
 
@@ -52,7 +55,7 @@ export function handleSessionsRoute(req: IncomingMessage, res: ServerResponse, p
     return sendJson(res, 405, { error: tr('método não permitido') });
   }
   const { history, terminals } = deps;
-  const locked = sessionsLockError(!!history && !!terminals, req.headers.host);
+  const locked = sessionsLockError(!!history && !!terminals, req.headers.host, deps.trusted);
   if (locked || !history || !terminals) return sendJson(res, 403, { error: locked });
 
   if (recent) {

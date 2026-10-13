@@ -2,6 +2,7 @@
 // Recebe o OfficeStore (dados) e o WorldApi (canvas) e monta: barra superior com uso por conta,
 // barra lateral, gaveta de detalhes, feed, avisos, configurações, ajuda e estados de carregamento/vazio.
 // DOM incremental: os snapshots (até ~5/s) só marcam a UI como "suja"; tudo é reconciliado uma vez por quadro.
+import { access, onAccessChange } from '../net/access';
 import '@fontsource/pixelify-sans/400.css';
 import '@fontsource/pixelify-sans/500.css';
 import '@fontsource/pixelify-sans/600.css';
@@ -18,6 +19,7 @@ import { Drawer } from './drawer';
 import { FeedPanel } from './feed';
 import { HelpDialog } from './help';
 import { HistoryPopover } from './history';
+import { Deliveries } from './deliveries';
 import { HoverTip } from './hovertip';
 import { hasRunningShells } from './model';
 import { hasCodexPermission } from './provider';
@@ -188,6 +190,28 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
     },
   };
   ctx.terminals = router;
+  // Entregas: o que os agentes terminaram (primeiro botão do grupo: é o que mais se usa pelo celular).
+  const deliveries = new Deliveries(ctx, terminal);
+  topbar.panelGroup.prepend(deliveries.button);
+  // Links com ?agent= / ?delivery= (abrem o agente ou a entrega ao carregar).
+  const openLink = (url: URL) => {
+    const agent = url.searchParams.get('agent');
+    const delivery = url.searchParams.get('delivery');
+    if (!agent && !delivery) return;
+    const go = () => {
+      if (delivery) void deliveries.openById(delivery);
+      else if (agent && ctx.agent(agent)) ctx.select({ type: 'agent', id: agent }, { focus: true });
+    };
+    if (store.snapshot) go();
+    else {
+      const off = store.on('snapshot', () => {
+        off();
+        setTimeout(go, 300);
+      });
+    }
+    if (url.search && location.search === url.search) window.history.replaceState(null, '', location.pathname);
+  };
+  if (typeof location !== 'undefined') openLink(new URL(location.href));
   drawer = new Drawer(ctx, terminal, pty);
   const feed = new FeedPanel(ctx);
   const toasts = new Toasts(ctx);
@@ -209,7 +233,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   const scrim = h('div', { class: 'ui-scrim', attrs: { 'aria-hidden': 'true' }, on: { click: () => ctx.togglePanel('sidebar', false) } });
 
   root.classList.add('ui-root');
-  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, pty.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, tip.el, settings.el, history.el, help.el, renamer.el, live, splash.el);
+  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, pty.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, tip.el, settings.el, history.el, deliveries.el, help.el, renamer.el, live, splash.el);
   area = new FreeArea(world, { root, topbar: topbar.el, sidebar: sidebar.el, drawer: drawer.el, feed: feed.el }, () => ({
     sidebar: panels.sidebar,
     feed: panels.feed,
@@ -218,7 +242,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   }));
   drawer.onLayoutChange = () => applyLayout();
 
-  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, pty, history, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
+  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, pty, history, deliveries, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster];
 
   // ---------------------------------------------------------------- renderização agrupada por quadro
   let rafId = 0;
@@ -265,6 +289,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
     invalidate();
   });
   store.on('connection', () => invalidate());
+  onAccessChange(() => invalidate());
   world.onSelect((sel) => {
     const prev = selection;
     selection = sel;
@@ -380,7 +405,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
     if (id === null && pty.isOpen) return pty.close();
     if (terminal.isOpen && (id === null || terminal.agentId === id)) terminal.close();
     else if (id === null) ctx.announce(tr('Selecione um agente para abrir o terminal.'));
-    else if (!store.snapshot?.meta.terminal) ctx.announce(`${TERMINAL_UNAVAILABLE_HINT}.`);
+    else if (!store.snapshot?.meta.terminal || !access().terminal) ctx.announce(`${TERMINAL_UNAVAILABLE_HINT}.`);
     else if (!ctx.agent(id)) ctx.announce(tr('O agente já saiu do escritório.'));
     else terminal.open(id);
   }

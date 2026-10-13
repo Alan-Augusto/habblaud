@@ -4,7 +4,7 @@
 import { isDemoId } from '../../../shared/timeline';
 import type { UiContext } from './context';
 import { h, setText } from './dom';
-import { isLocalHostname } from './permission';
+import { access } from '../net/access';
 import { tr } from '../../../shared/i18n';
 
 const NAME_MAX = 40;
@@ -21,7 +21,7 @@ export function canRenameRoom(ctx: UiContext, roomId: string): boolean {
     !ctx.store.mock &&
     !ctx.store.replaying &&
     !!ctx.store.snapshot?.meta.terminal &&
-    isLocalHostname(location.hostname)
+    access().local
   );
 }
 
