@@ -35,6 +35,7 @@ do meio (0.**3**.0).
 - Listas de tarefas malformadas do Claude Code não interrompem a leitura; o escritório preserva as demais atividades do mesmo lote, inclusive nos subagentes.
 - Uma imagem do Codex gravada no Windows (disco `C:` ou pasta de rede `\\servidor\...`) aparecia com o caminho
   errado na atividade e no terminal (`/C:/...`, ou a pasta sem o servidor). Agora o caminho é o do arquivo de origem.
+- Salvar um personagem ou voltar ao sorteio não fecha mais outra edição aberta enquanto a resposta chega, nem mostra nela um erro da edição anterior.
 
 ## [0.8.0] - 2026-10-09
 
