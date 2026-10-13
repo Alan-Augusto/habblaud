@@ -58,7 +58,7 @@ do meio (0.**3**.0).
 - No timelapse, os avisos do canto ficam acima da barra de reprodução, em vez de cobrir a linha do tempo e os botões.
 - Com muitas contas ou a janela estreita, os cartões de uso vão para uma segunda linha da barra superior, em vez de
   cobrir os botões da direita (zoom, Meu dia, Configurações, Ajuda).
-- No celular estreito (até uns 414 px), a barra superior não corta mais o logo e o botão do painel lateral: os
+- No celular (até 480 px), a barra superior não corta mais o logo e o botão do painel lateral: os
   contadores descem para a linha dos cartões de uso.
 - "Meu dia" no celular: o seletor Demonstração | Dados reais não sai mais da tela (em francês, nem a 390 px).
 - Dois pedidos de permissão do mesmo agente no mesmo instante: o detalhe do mais novo não diz mais que há outro

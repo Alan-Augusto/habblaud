@@ -535,7 +535,7 @@ terminal** deixa a pergunta lá. A resposta chega ao agente como se você tivess
   estiver configurado para responder), o pedido volta ao terminal.
 - Funciona com a mesma trava do terminal: só com o Habblaud acessível apenas pelo próprio
   computador e aberto por `http://localhost`. Confira com `npm run mod:status` (ou `npm run hooks:status`, no jeito
-  antigo).
+  antigo). Também funciona pelo [celular com login](#celular-com-login-e-https-aprovando-pedidos) (lá, é o padrão).
 - No modo demonstração, os agentes fictícios também pedem permissão e fazem perguntas (de mentira), para
   experimentar.
 
@@ -555,6 +555,7 @@ e espera o próximo pedido, dar uma instrução nova ou corrigir o rumo, sem pro
   mensagens.
 - Funciona com a mesma trava do terminal (só com acesso local) e pode ser desligado com `HABBLAUD_MENSAGENS=0`.
   Leia o aviso em [Privacidade e segurança](#privacidade-e-segurança).
+  Pelo [celular com login](#celular-com-login-e-https-aprovando-pedidos), só com `messages` no `HABBLAUD_REMOTE_ALLOW`.
 - No modo demonstração, os agentes fictícios também recebem mensagens (de mentira).
 
 ### Editar o personagem
@@ -835,6 +836,7 @@ das contas (letra, e-mail, organização) são lidos no host pelo `docker:up` e 
   sem token, à API pública do GitHub (`api.github.com/repos/marmottajr/habblaud/releases/latest`). Ela não envia nada
   sobre as suas sessões; o GitHub vê só o seu IP e a versão em uso, que vai no `User-Agent`.
   `HABBLAUD_UPDATE_CHECK=0` desliga a consulta.
+  O [celular com login](#celular-com-login-e-https-aprovando-pedidos) também, e ele só existe depois do `npm run remote:setup`.
 - **Sem credenciais:** o Habblaud não lê senhas nem tokens de acesso. Do `.claude.json` de cada conta aproveita só o
   e-mail, a organização e o cache do `/usage`; o uso ao vivo vem do mod (ou do tap de statusline).
 - **Segredos mascarados:** tokens e senhas com formato conhecido (`Bearer`, `-u usuário:senha`, `TOKEN=`, chaves
@@ -847,6 +849,7 @@ das contas (letra, e-mail, organização) são lidos no host pelo `docker:up` e 
   ligá-lo com a porta exposta — e cada pedido precisa vir por `localhost`/`127.0.0.1`: IPs da rede e nomes de
   `HABBLAUD_ALLOWED_HOSTS` (proxies, túneis) são recusados. Segredos são mascarados e textos longos truncados antes
   de chegar ao navegador; no modo demonstração, a conversa é fictícia. `HABBLAUD_TERMINAL=0` desliga de vez.
+  A única exceção é o [celular com login](#celular-com-login-e-https-aprovando-pedidos), e só com `terminal` no `HABBLAUD_REMOTE_ALLOW`.
 - **Linha do tempo do timelapse:** só os resumos que já aparecem na tela (atividade em uma linha, status, títulos,
   uso das contas, sem e-mails, comandos completos ou conversas), gravados em `~/.habblaud/timeline/` e apagados depois
   de 7 dias. `HABBLAUD_TIMELINE=0` desliga a gravação.
@@ -859,6 +862,7 @@ das contas (letra, e-mail, organização) são lidos no host pelo `docker:up` e 
   para aquele pedido. Atenção: qualquer programa ou pessoa que consiga abrir `http://localhost:4747` nesta máquina
   também consegue responder; em computadores compartilhados com outros usuários, não instale o hook
   (`npm run mod:install -- --sem-permissoes`).
+  Exceção: o [celular com login](#celular-com-login-e-https-aprovando-pedidos) também responde (é o padrão dele) e vê o mesmo comando ou diff.
 - **Mandar mensagens, só local — e com um aviso:** a mensagem entra na sessão como se você a tivesse digitado, então
   vale o que o agente pode fazer com um pedido seu. Segue a mesma trava (bind local, `Host` local, JSON e origem local,
   então um site aberto no navegador não consegue mandar), mas **qualquer programa desta máquina** que fale com
@@ -866,6 +870,7 @@ das contas (letra, e-mail, organização) são lidos no host pelo `docker:up` e 
   que tenha o plugin. Se isso não serve para você (computador compartilhado, agentes rodando sem supervisão), não
   instale o plugin (`npm run mod:install -- --sem-mensagens`) ou desligue com `HABBLAUD_MENSAGENS=0`. O texto das
   mensagens não é gravado: some do servidor assim que é entregue.
+  Pelo [celular com login](#celular-com-login-e-https-aprovando-pedidos), só com `messages` no `HABBLAUD_REMOTE_ALLOW`.
 - **Terminal interativo, opt-in — e com um aviso:** com `HABBLAUD_PTY=1`, o escritório abre o Claude Code em
   qualquer pasta, digita nele (inclusive `!comando`, que roda no shell) e encerra ou assume sessões abertas noutros
   terminais. Segue a mesma trava do terminal (bind local, `Host` local, nada de proxies ou túneis) e cada pedido

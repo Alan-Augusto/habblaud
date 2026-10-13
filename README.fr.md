@@ -565,6 +565,7 @@ vous l'aviez choisie dans le terminal.
 - Cela fonctionne avec le même verrou que le terminal : uniquement avec Habblaud accessible seulement depuis l'ordinateur
   lui-même et ouvert via `http://localhost`. Vérifiez avec `npm run mod:status` (ou `npm run hooks:status`, avec
   l'ancienne méthode).
+  Cela fonctionne aussi depuis le [téléphone avec connexion](#téléphone-avec-connexion-et-https-valider-les-demandes) (c'est le réglage par défaut là-bas).
 - En mode démonstration, les agents fictifs demandent aussi des permissions et posent des questions (pour de faux),
   pour que vous puissiez essayer.
 
@@ -584,6 +585,7 @@ son tour et attend la demande suivante, donner une nouvelle instruction ou corri
   sous-agents ne reçoivent pas de messages.
 - Cela fonctionne avec le même verrou que le terminal (accès local uniquement) et peut être désactivé avec `HABBLAUD_MENSAGENS=0`.
   Lisez l'avertissement dans [Confidentialité et sécurité](#confidentialité-et-sécurité).
+  Depuis le [téléphone avec connexion](#téléphone-avec-connexion-et-https-valider-les-demandes), seulement avec `messages` dans `HABBLAUD_REMOTE_ALLOW`.
 - En mode démonstration, les agents fictifs reçoivent aussi des messages (pour de faux).
 
 ### Modifier le personnage
@@ -878,6 +880,7 @@ avec `no-new-privileges`. Les métadonnées des comptes (lettre, e-mail, organis
   (`api.github.com/repos/marmottajr/habblaud/releases/latest`). Elle n'envoie rien sur vos sessions ; GitHub ne voit que
   votre IP et la version utilisée, qui figure dans le `User-Agent`.
   `HABBLAUD_UPDATE_CHECK=0` désactive la requête.
+  Le [téléphone avec connexion](#téléphone-avec-connexion-et-https-valider-les-demandes) aussi : il n'existe qu'après `npm run remote:setup`.
 - **Sans identifiants :** Habblaud ne lit ni mots de passe ni tokens d'accès. Du `.claude.json` de chaque compte, il
   n'utilise que l'e-mail, l'organisation et le cache de `/usage` ; l'utilisation en direct vient du mod (ou de la
   dérivation de statusline).
@@ -891,6 +894,7 @@ avec `no-new-privileges`. Les métadonnées des comptes (lettre, e-mail, organis
   l'activer avec le port exposé — et chaque requête doit passer par `localhost`/`127.0.0.1` : les IP du réseau et les
   noms de `HABBLAUD_ALLOWED_HOSTS` (proxys, tunnels) sont refusés. Les secrets sont masqués et les textes longs tronqués
   avant d'arriver au navigateur ; en mode démonstration, la conversation est fictive. `HABBLAUD_TERMINAL=0` le désactive complètement.
+  Seule exception : le [téléphone avec connexion](#téléphone-avec-connexion-et-https-valider-les-demandes), et seulement avec `terminal` dans `HABBLAUD_REMOTE_ALLOW`.
 - **Chronologie du timelapse :** uniquement les résumés déjà affichés à l'écran (activité sur une ligne, statut, titres,
   utilisation des comptes, sans e-mails, commandes complètes ni conversations), enregistrés dans `~/.habblaud/timeline/`
   et supprimés au bout de 7 jours. `HABBLAUD_TIMELINE=0` désactive l'enregistrement.
@@ -904,6 +908,7 @@ avec `no-new-privileges`. Les métadonnées des comptes (lettre, e-mail, organis
   demande. Attention : tout programme ou toute personne capable d'ouvrir `http://localhost:4747` sur cette machine peut
   aussi répondre ; sur des ordinateurs partagés avec d'autres utilisateurs, n'installez pas le hook
   (`npm run mod:install -- --sem-permissoes`).
+  Exception : le [téléphone avec connexion](#téléphone-avec-connexion-et-https-valider-les-demandes) répond aussi (c'est son réglage par défaut) et voit la même commande ou le même diff.
 - **Envoyer des messages, en local uniquement — avec un avertissement :** le message entre dans la session comme si vous
   l'aviez tapé, donc tout ce que l'agent peut faire à votre demande s'applique. Cela suit le même verrou (bind local,
   `Host` local, JSON et origine locale, si bien qu'un site ouvert dans le navigateur ne peut pas en envoyer), mais
@@ -912,6 +917,7 @@ avec `no-new-privileges`. Les métadonnées des comptes (lettre, e-mail, organis
   partagé, agents qui tournent sans supervision), n'installez pas le plugin (`npm run mod:install -- --sem-mensagens`)
   ou désactivez-le avec `HABBLAUD_MENSAGENS=0`. Le texte des messages n'est pas enregistré : il disparaît du serveur dès
   qu'il est remis.
+  Depuis le [téléphone avec connexion](#téléphone-avec-connexion-et-https-valider-les-demandes), seulement avec `messages` dans `HABBLAUD_REMOTE_ALLOW`.
 - **Terminal interactif, sur activation — avec un avertissement :** avec `HABBLAUD_PTY=1`, le bureau ouvre Claude Code
   dans n'importe quel dossier, y tape (y compris `!comando`, qui s'exécute dans le shell) et ferme ou reprend des
   sessions ouvertes dans d'autres terminaux. Cela suit le même verrou que le terminal (bind local, `Host` local, pas de

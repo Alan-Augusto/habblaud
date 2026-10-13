@@ -358,6 +358,19 @@ describe('porta remota', () => {
     expect((await request(t.localBase, '/api/spawn', { method: 'POST', body: { folder: 'relativa', prompt: '' } })).status).toBe(400);
   });
 
+  it('login com o corpo pela metade não trava o login de mais ninguém', async () => {
+    const s = await start();
+    const hanging = http.request(new URL('/api/remote/login', s.remoteBase), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': '200' },
+    });
+    hanging.on('error', () => {});
+    hanging.write('{"user":"ana","pass');
+    await new Promise((r) => setTimeout(r, 50));
+    await login(s.remoteBase);
+    hanging.destroy();
+  });
+
   it('Sair: apaga o cookie e o mesmo token deixa de valer (mesmo guardado numa cópia)', async () => {
     const s = await start();
     const cookie = await login(s.remoteBase);

@@ -416,15 +416,23 @@ export function createRemoteGate(deps: RemoteGateDeps): (req: IncomingMessage, r
         sendJson(res, 405, { error: tr('método não permitido') }, { Allow: 'POST' });
         return true;
       }
-      if (!throttle.begin()) {
-        const wait = throttle.retryAfter();
-        req.resume();
+      const tooMany = () => {
+        const wait = Math.max(1, throttle.retryAfter());
         sendJson(res, 429, { error: tr('Muitas tentativas. Tente de novo em {0} s.', [wait]) }, { 'Retry-After': String(wait) });
+      };
+      if (throttle.retryAfter() > 0) {
+        req.resume();
+        tooMany();
         return true;
       }
+      // A tentativa só começa (e ocupa o freio) com o corpo inteiro na mão: um corpo que nunca termina não trava o
+      // login de mais ninguém.
+      let begun = false;
       let ok = false;
       readBody(req)
         .then(async (raw) => {
+          if (!throttle.begin()) return tooMany();
+          begun = true;
           let body: { user?: unknown; password?: unknown } = {};
           try {
             body = JSON.parse(raw) as typeof body;
@@ -444,7 +452,9 @@ export function createRemoteGate(deps: RemoteGateDeps): (req: IncomingMessage, r
         .catch(() => {
           if (!res.headersSent) sendJson(res, 400, { error: tr('requisição inválida') });
         })
-        .finally(() => throttle.end(ok));
+        .finally(() => {
+          if (begun) throttle.end(ok);
+        });
       return true;
     }
 

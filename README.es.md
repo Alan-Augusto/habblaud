@@ -564,6 +564,7 @@ terminal.
 - Funciona con el mismo bloqueo que la terminal: solo con Habblaud accesible únicamente desde la propia
   computadora y abierto por `http://localhost`. Compruébalo con `npm run mod:status` (o `npm run hooks:status`, en el
   método antiguo).
+  También funciona desde el [celular con inicio de sesión](#celular-con-inicio-de-sesión-y-https-aprobar-solicitudes) (allí, es lo predeterminado).
 - En el modo demostración, los agentes ficticios también piden permiso y hacen preguntas (de mentira), para que lo
   pruebes.
 
@@ -584,6 +585,7 @@ ventana correcta.
   subagentes no reciben mensajes.
 - Funciona con el mismo bloqueo que la terminal (solo con acceso local) y se puede desactivar con
   `HABBLAUD_MENSAGENS=0`. Lee el aviso en [Privacidad y seguridad](#privacidad-y-seguridad).
+  Desde el [celular con inicio de sesión](#celular-con-inicio-de-sesión-y-https-aprobar-solicitudes), solo con `messages` en `HABBLAUD_REMOTE_ALLOW`.
 - En el modo demostración, los agentes ficticios también reciben mensajes (de mentira).
 
 ### Editar el personaje
@@ -873,6 +875,7 @@ los pasa al contenedor.
   consulta anónima, sin token, a la API pública de GitHub (`api.github.com/repos/marmottajr/habblaud/releases/latest`).
   No envía nada sobre tus sesiones; GitHub ve solo tu IP y la versión en uso, que va en el `User-Agent`.
   `HABBLAUD_UPDATE_CHECK=0` desactiva la consulta.
+  El [celular con inicio de sesión](#celular-con-inicio-de-sesión-y-https-aprobar-solicitudes) también, y solo existe después de `npm run remote:setup`.
 - **Sin credenciales:** Habblaud no lee contraseñas ni tokens de acceso. Del `.claude.json` de cada cuenta aprovecha
   solo el correo, la organización y la caché de `/usage`; el uso en vivo viene del mod (o del tap de statusline).
 - **Secretos enmascarados:** los tokens y contraseñas con formato conocido (`Bearer`, `-u usuário:senha`, `TOKEN=`,
@@ -886,6 +889,7 @@ los pasa al contenedor.
   los nombres de `HABBLAUD_ALLOWED_HOSTS` (proxies, túneles) se rechazan. Los secretos se enmascaran y los textos
   largos se truncan antes de llegar al navegador; en el modo demostración, la conversación es ficticia.
   `HABBLAUD_TERMINAL=0` la desactiva por completo.
+  La única excepción es el [celular con inicio de sesión](#celular-con-inicio-de-sesión-y-https-aprobar-solicitudes), y solo con `terminal` en `HABBLAUD_REMOTE_ALLOW`.
 - **Línea de tiempo del timelapse:** solo los resúmenes que ya aparecen en pantalla (actividad en una línea, estado,
   títulos, uso de las cuentas; sin correos, comandos completos ni conversaciones), guardados en
   `~/.habblaud/timeline/` y borrados después de 7 días. `HABBLAUD_TIMELINE=0` desactiva la grabación.
@@ -898,6 +902,7 @@ los pasa al contenedor.
   propio Claude Code sugirió para esa solicitud. Atención: cualquier programa o persona que pueda abrir
   `http://localhost:4747` en esta máquina también puede responder; en computadoras compartidas con otros usuarios, no
   instales el hook (`npm run mod:install -- --sem-permissoes`).
+  Excepción: el [celular con inicio de sesión](#celular-con-inicio-de-sesión-y-https-aprobar-solicitudes) también responde (es lo predeterminado) y ve el mismo comando o diff.
 - **Enviar mensajes, solo local, y con una advertencia:** el mensaje entra en la sesión como si lo hubieras escrito
   tú, así que vale lo que el agente puede hacer con una solicitud tuya. Sigue el mismo bloqueo (bind local, `Host`
   local, JSON y origen local, así que un sitio abierto en el navegador no puede enviarlo), pero **cualquier programa de
@@ -905,6 +910,7 @@ los pasa al contenedor.
   mensaje a otra sesión que tenga el plugin. Si eso no te sirve (computadora compartida, agentes ejecutándose sin
   supervisión), no instales el plugin (`npm run mod:install -- --sem-mensagens`) o desactívalo con
   `HABBLAUD_MENSAGENS=0`. El texto de los mensajes no se guarda: desaparece del servidor en cuanto se entrega.
+  Desde el [celular con inicio de sesión](#celular-con-inicio-de-sesión-y-https-aprobar-solicitudes), solo con `messages` en `HABBLAUD_REMOTE_ALLOW`.
 - **Terminal interactiva, opcional (opt-in), y con una advertencia:** con `HABBLAUD_PTY=1`, la oficina abre Claude
   Code en cualquier carpeta, escribe en él (incluido `!comando`, que se ejecuta en el shell) y cierra o toma el control
   de sesiones abiertas en otras terminales. Sigue el mismo bloqueo que la terminal (bind local, `Host` local, nada de

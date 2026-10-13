@@ -537,7 +537,7 @@ terminal** leaves the question there. The answer reaches the agent as if you had
   is set up to answer), the request goes back to the terminal.
 - It works under the same safeguard as the terminal: only with Habblaud reachable only from the computer it runs on
   and opened through `http://localhost`. Check with `npm run mod:status` (or `npm run hooks:status`, in the old
-  way).
+  way). It also works from the [phone with login](#phone-with-login-and-https-approving-requests) (its default).
 - In demo mode, the made-up agents also ask for permission and ask questions (pretend ones), so you can
   try it out.
 
@@ -557,6 +557,7 @@ and waits for the next request, give a new instruction or correct its course, wi
   messages.
 - It works under the same safeguard as the terminal (local access only) and can be turned off with `HABBLAUD_MENSAGENS=0`.
   Read the warning in [Privacy and security](#privacy-and-security).
+  From the [phone with login](#phone-with-login-and-https-approving-requests), only with `messages` in `HABBLAUD_REMOTE_ALLOW`.
 - In demo mode, the made-up agents also receive messages (pretend ones).
 
 ### Editing the character
@@ -837,6 +838,7 @@ metadata (letter, email, organization) is read on the host by `docker:up` and pa
   with no token, to the public GitHub API (`api.github.com/repos/marmottajr/habblaud/releases/latest`). It doesn't send anything
   about your sessions; GitHub only sees your IP and the version in use, which goes in the `User-Agent`.
   `HABBLAUD_UPDATE_CHECK=0` turns off the request.
+  So is the [phone with login](#phone-with-login-and-https-approving-requests), which only exists after `npm run remote:setup`.
 - **No credentials:** Habblaud doesn't read passwords or access tokens. From each account's `.claude.json` it only uses the
   email, the organization and the `/usage` cache; live usage comes from the mod (or the statusline tap).
 - **Masked secrets:** tokens and passwords in known formats (`Bearer`, `-u usuário:senha`, `TOKEN=`, `sk-…`,
@@ -849,6 +851,7 @@ metadata (letter, email, organization) is read on the host by `docker:up` and pa
   turn it on with the port exposed — and each request has to come through `localhost`/`127.0.0.1`: network IPs and names from
   `HABBLAUD_ALLOWED_HOSTS` (proxies, tunnels) are refused. Secrets are masked and long texts truncated before
   they reach the browser; in demo mode, the conversation is made up. `HABBLAUD_TERMINAL=0` turns it off for good.
+  The one exception is the [phone with login](#phone-with-login-and-https-approving-requests), and only with `terminal` in `HABBLAUD_REMOTE_ALLOW`.
 - **Timelapse timeline:** only the summaries that already show up on screen (one-line activity, status, titles,
   account usage, with no emails, full commands or conversations), written to `~/.habblaud/timeline/` and deleted after
   7 days. `HABBLAUD_TIMELINE=0` turns off recording.
@@ -861,6 +864,7 @@ metadata (letter, email, organization) is read on the host by `docker:up` and pa
   for that request. Note: any program or person that can open `http://localhost:4747` on this machine
   can also answer; on computers shared with other users, don't install the hook
   (`npm run mod:install -- --sem-permissoes`).
+  Exception: the [phone with login](#phone-with-login-and-https-approving-requests) answers too (that is its default) and sees the same command or diff.
 - **Sending messages, local only — and with a warning:** the message goes into the session as if you had typed it, so
   whatever the agent can do with a request of yours applies. It follows the same safeguard (local bind, local `Host`, JSON and local origin,
   so a site open in the browser can't send one), but **any program on this machine** that talks to
@@ -868,6 +872,7 @@ metadata (letter, email, organization) is read on the host by `docker:up` and pa
   that has the plugin. If that doesn't work for you (shared computer, agents running unsupervised), don't
   install the plugin (`npm run mod:install -- --sem-mensagens`) or turn it off with `HABBLAUD_MENSAGENS=0`. The text of the
   messages isn't saved: it disappears from the server as soon as it's delivered.
+  From the [phone with login](#phone-with-login-and-https-approving-requests), only with `messages` in `HABBLAUD_REMOTE_ALLOW`.
 - **Interactive terminal, opt-in — and with a warning:** with `HABBLAUD_PTY=1`, the office opens Claude Code in
   any folder, types into it (including `!comando`, which runs in the shell) and ends or takes over sessions open in other
   terminals. It follows the same safeguard as the terminal (local bind, local `Host`, no proxies or tunnels) and each request
