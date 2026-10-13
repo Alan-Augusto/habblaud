@@ -10,6 +10,13 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+## [0.10.0] - 2026-10-13
+
+Para atualizar: `git pull` e `npm run docker:up`. A interface segue o idioma do navegador (ou Configurações › Idioma).
+Os textos que o servidor monta continuam em português; para outro idioma, defina `HABBLAUD_LANG` (`en`, `es` ou `fr`)
+no `.env` antes do `docker:up`. Em outubro, o tema automático já deixa o escritório no clima de Halloween; para o
+visual de sempre, escolha **Nenhum** em Configurações › Aparência.
+
 ### Adicionado
 
 - **Temas do escritório** em Configurações › Aparência: decoração em pixel art (árvores com presentes, guirlandas e
