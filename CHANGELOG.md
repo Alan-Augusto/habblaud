@@ -33,6 +33,8 @@ do meio (0.**3**.0).
 - O detalhe da atividade não mostra mais o segredo de webhooks (Slack, Discord e Telegram) nem de tokens `npm_` e `hf_` colados num comando.
 - Mensagens ao Codex no Docker agora são entregues uma por vez por sessão e confirmadas individualmente, reduzindo falhas prematuras e reenvios duplicados.
 - Listas de tarefas malformadas do Claude Code não interrompem a leitura; o escritório preserva as demais atividades do mesmo lote, inclusive nos subagentes.
+- Uma imagem do Codex gravada no Windows (disco `C:` ou pasta de rede `\\servidor\...`) aparecia com o caminho
+  errado na atividade e no terminal (`/C:/...`, ou a pasta sem o servidor). Agora o caminho é o do arquivo de origem.
 
 ## [0.8.0] - 2026-10-09
 
