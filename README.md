@@ -558,6 +558,12 @@ and waits for the next request, give a new instruction or correct its course, wi
 - **Command menu:** type `/` at the start of the box and it lists the commands the session has (Claude Code's own,
   plugins', yours and MCP servers'), each with its description. Keep typing to filter; the arrows move, `Enter` or
   `Tab` complete and `Esc` closes. Those tagged "terminal only" open a panel and do not go through the box.
+- **Mention files with `@`:** type `@` and the start of a name and the box lists the files of the agent's project
+  that match (the search is fuzzy and covers the whole path). `Enter` or `Tab` put `@path` in the message; it goes as
+  text (Claude Code does not attach a file mentioned in a message that comes from a plugin) and the agent opens it by
+  the path. The list
+  follows `.gitignore` and never shows environment files, keys or credential folders; only the names leave the
+  computer for the page. In Docker the host helper does the listing: keep `npm run codex:bridge` running.
 - The box shows the status: **queued** (the session fetches messages every 2 seconds), **delivered** or **not
   delivered**, with the reason. With the agent busy, the message waits and goes in when it finishes its turn, like a
   prompt typed while the agent is working.

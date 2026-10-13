@@ -6,11 +6,14 @@
 // cada agente fica guardado (só na memória) ao trocar de agente. O microfone (ui/dictation.ts, Whisper local no Mac)
 // põe o texto ditado no cursor; aparece quando o ditado funciona daqui. Com `/` no começo, abre o menu de comandos de
 // barra da sessão do agente (a lista vem do plugin, por GET /api/messages/commands/:id): filtra ao digitar, setas
-// andam, Enter ou Tab completam e Esc fecha. A lógica pura está em ui/composer-model.ts.
+// andam, Enter ou Tab completam e Esc fecha. Com `@`, o mesmo menu lista os arquivos do projeto do agente que casam
+// com o que vem depois (GET /api/messages/files/:id) e o escolhido entra como `@caminho`. A lógica pura está em
+// ui/composer-model.ts.
 import { MESSAGE_MAX } from '../../../shared/messages';
 import type { AgentInfo, OutboxMessage, Provider, SessionCommand } from '../../../shared/types';
 import {
   applyCommand,
+  applyMention,
   canSend,
   commandOptions,
   commandQuery,
@@ -19,15 +22,20 @@ import {
   composerMode,
   composerTip,
   enterSends,
+  FILE_SEARCH_CACHE,
+  FILE_SEARCH_DELAY_MS,
+  fileOptions,
   isSettled,
   LOST_ERROR,
   menuAction,
+  mentionQuery,
   messageText,
   moveActive,
   OFFLINE_ERROR,
   POLL_LIMIT_MS,
   pollDelay,
   sendStatusText,
+  splitPath,
   timeoutError,
   type CommandOption,
   type ComposerMode,
@@ -83,6 +91,10 @@ export class MessageComposer {
   private active = 0;
   /** Fechado com Esc: só volta a abrir quando o texto mudar. */
   private menuClosed = false;
+  /** Arquivos citados com `@`: as buscas já feitas ("<agente>\n<texto>"), a que está na tela e a que espera a vez. */
+  private fileHits = new Map<string, string[]>();
+  private fileKey = '';
+  private fileTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private ctx: UiContext,
@@ -220,7 +232,9 @@ export class MessageComposer {
     // (Ctrl/⌘+F busca na conversa do terminal; os atalhos globais ignoram essas combinações).
     if (!e.ctrlKey && !e.metaKey) e.stopPropagation();
     if (!this.menu.hidden) {
-      const action = menuAction(e, commandQuery(this.box.value, this.box.selectionStart ?? 0) ?? '', this.options[this.active]);
+      const at = this.box.selectionStart ?? 0;
+      const typed = this.options[0]?.file ? mentionQuery(this.box.value, at)?.query : commandQuery(this.box.value, at);
+      const action = menuAction(e, typed ?? '', this.options[this.active]);
       if (action) {
         // Esc fecha só o menu (o próximo sai da caixa).
         e.preventDefault();
@@ -248,19 +262,56 @@ export class MessageComposer {
   }
 
   /**
-   * Abre, atualiza ou fecha o menu de comandos conforme o texto e o cursor. Só no Claude Code (é o plugin dele que
-   * manda a lista) e com a caixa em foco; sem comando que case, fica fechado.
+   * Abre, atualiza ou fecha o menu conforme o texto e o cursor, com a caixa em foco: os comandos de barra (só no
+   * Claude Code: é o plugin dele que manda a lista) ou os arquivos citados com `@`. Sem nada que case, fica fechado.
    */
   private syncMenu(): void {
     const box = this.box;
-    const focused = document.activeElement === box;
-    const query = this.mode.kind === 'ready' && this.provider === 'claude' && focused && !this.menuClosed ? commandQuery(box.value, box.selectionStart ?? 0) : undefined;
-    if (query === undefined) return this.showMenu([]);
-    this.loadCommands(this.agentId);
-    const options = commandOptions(this.commandLists.get(this.agentId)?.list ?? [], query);
+    const caret = box.selectionStart ?? 0;
+    if (this.mode.kind !== 'ready' || document.activeElement !== box || this.menuClosed) return this.showMenu([]);
+    const query = this.provider === 'claude' ? commandQuery(box.value, caret) : undefined;
+    let options: CommandOption[];
+    if (query !== undefined) {
+      this.loadCommands(this.agentId);
+      options = commandOptions(this.commandLists.get(this.agentId)?.list ?? [], query);
+    } else {
+      const mention = mentionQuery(box.value, caret);
+      if (!mention) return this.showMenu([]);
+      const hits = this.loadFiles(this.agentId, mention.query);
+      // Busca a caminho: o menu de arquivos que já está na tela fica até ela chegar (sem piscar a cada letra).
+      if (!hits && this.options[0]?.file) return;
+      options = fileOptions(hits ?? []);
+    }
     // A lista é a mesma (o cursor andou, a tecla soltou): o destaque fica; mudou, volta ao primeiro.
     const same = options.length === this.options.length && options.every((o, i) => o.name === this.options[i].name);
     this.showMenu(options, same ? this.active : 0);
+  }
+
+  /**
+   * Os arquivos do projeto do agente que casam com `query`, se a busca já foi feita; senão undefined, e ela é pedida
+   * quando a digitação parar um instante (o menu é atualizado quando chegar). Falha = nenhum arquivo.
+   */
+  private loadFiles(agentId: string, query: string): string[] | undefined {
+    const key = `${agentId}\n${query}`;
+    const hit = this.fileHits.get(key);
+    if (hit || key === this.fileKey) return hit;
+    this.fileKey = key;
+    if (this.fileTimer) clearTimeout(this.fileTimer);
+    this.fileTimer = setTimeout(() => {
+      this.fileTimer = null;
+      this.ctx.store
+        .projectFiles(agentId, query)
+        .catch(() => [] as string[])
+        .then((files) => {
+          this.fileHits.set(key, files);
+          if (this.fileHits.size > FILE_SEARCH_CACHE) this.fileHits.delete(this.fileHits.keys().next().value as string);
+          if (key === this.fileKey) {
+            this.fileKey = '';
+            this.syncMenu();
+          }
+        });
+    }, FILE_SEARCH_DELAY_MS);
+    return undefined;
   }
 
   private showMenu(options: CommandOption[], active = 0): void {
@@ -269,14 +320,17 @@ export class MessageComposer {
     const open = options.length > 0;
     setHidden(this.menu, !open);
     setAttr(this.box, 'aria-expanded', String(open));
+    if (open) setAttr(this.menu, 'aria-label', options[0].file ? tr('Arquivos do projeto') : tr('Comandos de barra'));
     if (!same) {
       this.menu.replaceChildren(
         ...options.map((o, i) => {
+          // Arquivo: o nome em destaque e a pasta ao lado; comando: `/nome` e a descrição.
+          const path = o.file ? splitPath(o.name) : undefined;
           const item = h(
             'li',
-            { class: `ui-msg__opt${o.panel ? ' is-panel' : ''}`, role: 'option', attrs: { id: `${this.menu.id}-${i}` } },
-            h('span', { class: 'ui-msg__opt-name', text: `/${o.name}` }),
-            h('span', { class: 'ui-msg__opt-desc', text: o.description }),
+            { class: `ui-msg__opt${o.panel ? ' is-panel' : ''}`, role: 'option', title: path ? o.name : undefined, attrs: { id: `${this.menu.id}-${i}` } },
+            h('span', { class: 'ui-msg__opt-name', text: path ? path.name : `/${o.name}` }),
+            h('span', { class: 'ui-msg__opt-desc', text: path ? path.dir : o.description }),
             o.panel ? h('span', { class: 'ui-msg__opt-tag', text: tr('só no terminal'), title: tr('Abre um painel no terminal da sessão, que o escritório não mostra') }) : null,
           );
           // mousedown (e não click): a caixa não perde o foco, e o menu não fecha antes da escolha.
@@ -303,11 +357,17 @@ export class MessageComposer {
     setAttr(this.box, 'aria-activedescendant', this.menu.hidden || !items[index] ? null : items[index].id);
   }
 
-  /** Completa a caixa com o comando escolhido; o menu fecha (o cursor fica depois do nome, pronto para o argumento). */
+  /**
+   * Completa a caixa com o comando ou o arquivo escolhido; o menu fecha (o cursor fica depois dele, pronto para o
+   * argumento ou o resto da mensagem).
+   */
   private pick(index: number): void {
     const option = this.options[index];
     if (!option) return;
-    const { value, caret } = applyCommand(this.box.value, option.name);
+    const at = this.box.selectionStart ?? this.box.value.length;
+    const mention = option.file ? mentionQuery(this.box.value, at) : undefined;
+    if (option.file && !mention) return;
+    const { value, caret } = mention ? applyMention(this.box.value, mention.start, at, option.name) : applyCommand(this.box.value, option.name);
     this.box.value = value.slice(0, MESSAGE_MAX);
     this.drafts.set(this.agentId, this.box.value);
     this.box.focus({ preventScroll: true });

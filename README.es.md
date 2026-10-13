@@ -587,6 +587,12 @@ ventana correcta.
   Code, los de plugins, los tuyos y los de servidores MCP), cada uno con su descripción. Sigue escribiendo para
   filtrar; las flechas mueven, `Enter` o `Tab` completan y `Esc` cierra. Los marcados con "solo en la terminal" abren
   un panel y no van por el cuadro.
+- **Citar archivos con `@`:** escribe `@` y el principio del nombre y el cuadro lista los archivos del proyecto del
+  agente que coinciden (la búsqueda es aproximada y vale para toda la ruta). `Enter` o `Tab` ponen `@ruta` en el
+  mensaje; va como texto (Claude Code no adjunta el archivo citado en un mensaje que viene de un plugin) y el agente
+  lo abre por la ruta. La lista respeta el `.gitignore` y nunca muestra archivos de entorno, claves ni carpetas de credenciales;
+  solo los nombres salen del ordenador hacia la página. En Docker lista el auxiliar del host: deja
+  `npm run codex:bridge` en marcha.
 - El cuadro muestra el estado: **en cola** (la sesión busca los mensajes cada 2 segundos), **entregado** o **no se
   entregó**, con el motivo. Con el agente ocupado, el mensaje espera y entra cuando termine su turno, como un prompt
   escrito con el agente trabajando.

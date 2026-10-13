@@ -2587,4 +2587,8 @@ export const ES: Readonly<Record<string, string>> = {
   "Comandos de barra": "Comandos de barra",
   "só no terminal": "solo en la terminal",
   "Abre um painel no terminal da sessão, que o escritório não mostra": "Abre un panel en la terminal de la sesión, que la oficina no muestra",
+  "Arquivos do projeto": "Archivos del proyecto",
+  "o computador não listou a pasta": "el ordenador no listó la carpeta",
+  "pasta do projeto não encontrada": "carpeta del proyecto no encontrada",
+  "✗ lista de arquivos recusada: {0}": "✗ lista de archivos rechazada: {0}",
 };

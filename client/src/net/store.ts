@@ -339,6 +339,18 @@ export class OfficeStore {
     return Array.isArray(list) ? (list as SessionCommand[]) : [];
   }
 
+  /**
+   * Arquivos do projeto do agente que casam com `query` (GET /api/messages/files/:id), para citar com `@` na caixa de
+   * mensagem. No ?mock=1 não há projeto: vazia. Sem conexão, ou sem quem liste (503): lança.
+   */
+  async projectFiles(agentId: string, query: string): Promise<string[]> {
+    if (this.mock) return [];
+    const res = await fetch(`/api/messages/files/${encodeURIComponent(agentId)}?q=${encodeURIComponent(query)}`);
+    if (!res.ok) throw new Error(tr('erro {0}', [res.status]));
+    const list = ((await res.json()) as { files?: unknown }).files;
+    return Array.isArray(list) ? list.filter((f): f is string => typeof f === 'string') : [];
+  }
+
   /** Situação de uma mensagem (GET /api/messages/:id). null = o servidor não a conhece (404). Sem conexão: lança. */
   async messageStatus(id: string): Promise<OutboxMessage | null> {
     if (this.mock) {

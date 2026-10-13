@@ -556,6 +556,11 @@ e espera o próximo pedido, dar uma instrução nova ou corrigir o rumo, sem pro
   de plugins, os seus e os de servidores MCP), com a descrição de cada um. Continue digitando para filtrar; as setas
   andam, `Enter` ou `Tab` completam e `Esc` fecha. Os marcados com "só no terminal" abrem um painel e não vão pela
   caixa.
+- **Citar arquivos com `@`:** digite `@` e o começo do nome e a caixa lista os arquivos do projeto do agente que
+  casam (a busca é aproximada e vale para o caminho todo). `Enter` ou `Tab` põem `@caminho` na mensagem; ele vai como
+  texto (o Claude Code não anexa o arquivo citado numa mensagem vinda de um plugin) e o agente o abre pelo caminho. A lista segue
+  o `.gitignore` e nunca mostra arquivos de ambiente, chaves ou pastas de credenciais; só os nomes saem do computador
+  para a página. No Docker, quem lista é o auxiliar do host: deixe o `npm run codex:bridge` rodando.
 - A caixa mostra a situação: **na fila** (a sessão busca as mensagens a cada 2 segundos), **entregue** ou **não
   entregue**, com o motivo. Com o agente ocupado, a mensagem espera e entra quando ele terminar o turno, como um
   prompt digitado com o agente trabalhando.

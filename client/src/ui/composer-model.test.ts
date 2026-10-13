@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgentInfo, SessionCommand } from '../../../shared/types';
 import {
   applyCommand,
+  applyMention,
   canSend,
   commandOptions,
   commandQuery,
@@ -13,7 +14,10 @@ import {
   composerTip,
   DELIVERED_SHOW_MS,
   enterSends,
+  fileOptions,
   isSettled,
+  mentionQuery,
+  splitPath,
   messageText,
   PLUGIN_HINT,
   pollDelay,
@@ -204,5 +208,44 @@ describe('menu de comandos de barra', () => {
     expect(moveActive(2, 3, 1)).toBe(0);
     expect(moveActive(0, 3, -1)).toBe(2);
     expect(moveActive(0, 0, 1)).toBe(0);
+  });
+});
+
+describe('arquivos citados com @', () => {
+  it('abre com o @ no começo ou depois de um espaço, enquanto o cursor está no caminho', () => {
+    expect(mentionQuery('@', 1)).toEqual({ query: '', start: 0 });
+    expect(mentionQuery('@src/ap', 7)).toEqual({ query: 'src/ap', start: 0 });
+    expect(mentionQuery('olha o @comp', 12)).toEqual({ query: 'comp', start: 7 });
+    expect(mentionQuery('linha um\n@read', 14)).toEqual({ query: 'read', start: 9 });
+    // No meio de uma palavra (um e-mail) não é citação; depois do espaço, o cursor já saiu do caminho.
+    expect(mentionQuery('fulano@exemplo.com', 18)).toBeUndefined();
+    expect(mentionQuery('@src/app.ts e', 13)).toBeUndefined();
+    expect(mentionQuery('sem arroba', 10)).toBeUndefined();
+    // O cursor no meio do caminho: vale o que está antes dele.
+    expect(mentionQuery('@src/app.ts', 4)).toEqual({ query: 'src', start: 0 });
+  });
+
+  it('escolher troca o que foi digitado por @caminho, com um espaço (sem repetir o que já havia)', () => {
+    expect(applyMention('olha o @comp', 7, 12, 'src/ui/composer.ts')).toEqual({ value: 'olha o @src/ui/composer.ts ', caret: 27 });
+    expect(applyMention('@rea e depois', 0, 4, 'README.md')).toEqual({ value: '@README.md e depois', caret: 11 });
+    expect(applyMention('veja @', 5, 6, 'docs/meu plano.md')).toEqual({ value: 'veja @"docs/meu plano.md" ', caret: 26 });
+    // Só o que está antes do cursor é trocado: o resto do caminho antigo fica para a pessoa apagar.
+    expect(applyMention('@src/app.ts', 0, 4, 'src/index.ts')).toEqual({ value: '@src/index.ts /app.ts', caret: 14 });
+  });
+
+  it('linhas do menu: o caminho inteiro vai para a caixa; na tela, o nome e a pasta', () => {
+    expect(fileOptions(['README.md', 'src/ui/composer.ts'])).toEqual([
+      { name: 'README.md', description: '', panel: false, file: true },
+      { name: 'src/ui/composer.ts', description: '', panel: false, file: true },
+    ]);
+    expect(splitPath('src/ui/composer.ts')).toEqual({ name: 'composer.ts', dir: 'src/ui' });
+    expect(splitPath('README.md')).toEqual({ name: 'README.md', dir: '' });
+  });
+
+  it('Enter escolhe o arquivo destacado; com o caminho inteiro já digitado, manda', () => {
+    const key = { key: 'Enter', shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, isComposing: false };
+    const [active] = fileOptions(['README.md']);
+    expect(menuAction(key, 'read', active)).toBe('pick');
+    expect(menuAction(key, 'README.md', active)).toBeUndefined();
   });
 });

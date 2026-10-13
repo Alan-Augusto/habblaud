@@ -25,6 +25,11 @@ do meio (0.**3**.0).
   enquanto você digita; as setas andam, `Enter` ou `Tab` completam e `Esc` fecha. Os que abrem um painel vêm marcados
   com "só no terminal". A lista vem da própria sessão, pelo plugin `habblaud-mensagens`: sessões abertas a mandam
   depois de um `/reload-plugins`.
+- **Citar arquivos com `@` na caixa de mensagem:** digite `@` e o começo do nome e a caixa lista os arquivos do
+  projeto do agente que casam, com busca aproximada; `Enter` ou `Tab` põem `@caminho` na mensagem. A lista segue o
+  `.gitignore` (fora de um repositório git, uma caminhada curta pela pasta) e nunca mostra arquivos de ambiente,
+  chaves ou pastas de credenciais. No Docker, quem lista é o auxiliar do host (`npm run codex:bridge`), que precisa
+  ser reiniciado depois desta atualização.
 
 ### Alterado
 

@@ -1,6 +1,6 @@
 // Caixa de mensagem (ui/composer.ts), parte pura e testada em ui/composer-model.test.ts: quando a caixa aparece (e
-// por que não), o que a tecla Enter faz, o menu de comandos de barra (quando abre, o que lista e o que cada tecla faz
-// nele), a linha de situação de cada envio e o ritmo da consulta da entrega.
+// por que não), o que a tecla Enter faz, o menu de comandos de barra e o de arquivos citados com `@` (quando abrem, o
+// que listam e o que cada tecla faz neles), a linha de situação de cada envio e o ritmo da consulta da entrega.
 // No Codex a mensagem entra na fila da sessão (`codex queue`) e vira prompt quando ela fica ociosa: "Entregue" diz
 // isso; sem quem entregue (no Docker, o auxiliar do host), a dica é a do `npm run codex:bridge`.
 import { MESSAGE_MAX, panelCommandReason } from '../../../shared/messages';
@@ -71,11 +71,16 @@ export function commandQuery(value: string, caret: number): string | undefined {
   return /^\/(\S*)$/.exec(value.slice(0, caret))?.[1];
 }
 
+/** Uma linha do menu da caixa: um comando de barra ou um arquivo do projeto. */
 export interface CommandOption {
+  /** O nome do comando (sem a barra) ou o caminho do arquivo: é o que vai para a caixa. */
   name: string;
+  /** A descrição do comando; num arquivo, vazia. */
   description: string;
   /** Abre sempre um painel no terminal da sessão: o escritório não o manda (shared/messages.ts). */
   panel: boolean;
+  /** Arquivo do projeto (citado com `@`), e não um comando. */
+  file?: true;
 }
 
 export const DESCRIPTION_QUERY_MIN = 3;
@@ -105,6 +110,41 @@ export function applyCommand(value: string, name: string): { value: string; care
   const head = `/${name} `;
   return { value: head + value.replace(/^\/\S*\s*/, ''), caret: head.length };
 }
+
+/**
+ * O arquivo sendo citado (undefined = nenhum): o `@` no começo da caixa ou depois de um espaço, e o cursor ainda no
+ * caminho. `start` é onde está o `@`. Só o `@` = '' (os arquivos mais rasos do projeto).
+ */
+export function mentionQuery(value: string, caret: number): { query: string; start: number } | undefined {
+  const m = /(?:^|\s)@(\S*)$/.exec(value.slice(0, caret));
+  return m ? { query: m[1], start: caret - m[1].length - 1 } : undefined;
+}
+
+/** Os arquivos encontrados como linhas do menu. */
+export function fileOptions(paths: readonly string[]): CommandOption[] {
+  return paths.map((name) => ({ name, description: '', panel: false, file: true }));
+}
+
+/** Um caminho como aparece no menu: o nome do arquivo e, à parte, a pasta dele ('' na raiz do projeto). */
+export function splitPath(path: string): { name: string; dir: string } {
+  const i = path.lastIndexOf('/');
+  return { name: path.slice(i + 1), dir: i < 0 ? '' : path.slice(0, i) };
+}
+
+/**
+ * O arquivo escolhido no lugar do que foi digitado depois do `@` (de `start` até o cursor): `@caminho `, entre aspas se
+ * o caminho tem espaço, como no Claude Code. O espaço não se repete se já havia um depois do cursor.
+ */
+export function applyMention(value: string, start: number, caret: number, path: string): { value: string; caret: number } {
+  const mention = /\s/.test(path) ? `@"${path}"` : `@${path}`;
+  const rest = value.slice(caret);
+  const head = `${value.slice(0, start)}${mention}${/^\s/.test(rest) ? '' : ' '}`;
+  return { value: head + rest, caret: head.length + (/^\s/.test(rest) ? 1 : 0) };
+}
+
+/** Quanto esperar a digitação parar antes de buscar os arquivos, e quantas buscas ficam guardadas. */
+export const FILE_SEARCH_DELAY_MS = 90;
+export const FILE_SEARCH_CACHE = 40;
 
 export type MenuAction = 'next' | 'prev' | 'pick' | 'close';
 
