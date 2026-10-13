@@ -1079,8 +1079,9 @@ export const EN: Readonly<Record<string, string>> = {
   "Boa!": "Nice!",
   "Que ralo!": "What a shot!",
   "Ganhei de {a} a {b}! 🏆": "I won {a} to {b}! 🏆",
-  "Ken…": "Ken…",
-  "Pô!": "Po!",
+  "Jo…": "Rock…",
+  "Ken…": "Paper…",
+  "Pô!": "Scissors!",
   "Empate! De novo!": "Tie! Again!",
   "Pensamos igual 😂": "Great minds think alike 😂",
   "De novo!": "Again!",
@@ -2252,4 +2253,9 @@ export const EN: Readonly<Record<string, string>> = {
   "Uso capturado em {0}. Para desfazer: npm run usage:uninstall": "Usage captured in {0}. To undo: npm run usage:uninstall",
   "[usage] Erro: {0}": "[usage] Error: {0}",
   "[usage] Erro inesperado: {0}": "[usage] Unexpected error: {0}",
+
+  // client/src/ui/drawer.ts e daystats.ts (textos do terminal interativo e do Meu dia)
+  "Nova sessão": "New session",
+  "Abre um Claude Code novo nesta pasta, num terminal interativo": "Opens a new Claude Code in this folder, in an interactive terminal",
+  "em {0}": "in {0}",
 };

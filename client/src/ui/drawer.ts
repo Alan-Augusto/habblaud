@@ -311,7 +311,7 @@ class AgentView {
       { class: 'ui-btn ui-term-cta', type: 'button', attrs: { 'aria-pressed': 'false' }, on: { click: () => this.toggleTerminal() } },
       termIcon,
       this.termLabel,
-      (this.termRo = h('span', { class: 'ui-term-cta__ro', text: 'ao vivo' })),
+      (this.termRo = h('span', { class: 'ui-term-cta__ro', text: tr('ao vivo') })),
       h('kbd', { class: 'ui-kbd', text: 'T', attrs: { 'aria-hidden': 'true' } }),
     );
 
@@ -797,7 +797,7 @@ class RoomView {
     private ctx: UiContext,
     private pty: PtyControl,
   ) {
-    this.newBtn = h('button', { class: 'ui-btn', type: 'button', text: 'Nova sessão', title: 'Abre um Claude Code novo nesta pasta, num terminal interativo', on: { click: () => this.newSession() } });
+    this.newBtn = h('button', { class: 'ui-btn', type: 'button', text: tr('Nova sessão'), title: tr('Abre um Claude Code novo nesta pasta, num terminal interativo'), on: { click: () => this.newSession() } });
     this.newMsg = h('p', { class: 'ui-actions__msg is-error', role: 'status', hidden: true });
     this.swatch = h('span', { class: 'ui-room-hero__swatch', attrs: { 'aria-hidden': 'true' } });
     this.name = h('h2', { class: 'ui-hero__name' });
@@ -878,7 +878,7 @@ class RoomView {
     const account = (this.ctx.store.snapshot?.agents ?? []).find((a) => a.roomId === r.id && ptyControllable(a))?.account;
     setHidden(this.newMsg, true);
     this.pty.newSession(r.path, account).catch((err: Error) => {
-      setText(this.newMsg, `Não deu: ${err.message}`);
+      setText(this.newMsg, tr('Não deu: {0}', [err.message]));
       setHidden(this.newMsg, false);
     });
   }

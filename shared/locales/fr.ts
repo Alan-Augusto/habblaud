@@ -1025,8 +1025,9 @@ export const FR: Readonly<Record<string, string>> = {
   "Boa!": "Bien joué !",
   "Que ralo!": "Quelle balle !",
   "Ganhei de {a} a {b}! 🏆": "J'ai gagné {a} à {b} ! 🏆",
-  "Ken…": "Chi…",
-  "Pô!": "Fou-mi !",
+  "Jo…": "Chi…",
+  "Ken…": "Fou…",
+  "Pô!": "Mi !",
   "Empate! De novo!": "Égalité ! On recommence !",
   "Pensamos igual 😂": "On a eu la même idée 😂",
   "De novo!": "Encore !",
@@ -2268,4 +2269,9 @@ export const FR: Readonly<Record<string, string>> = {
 
   // scripts/statusline-install.ts
   "o arquivo mudou desde a leitura; nada foi alterado, rode o comando de novo": "le fichier a changé depuis la lecture ; rien n'a été modifié, relancez la commande",
+
+  // client/src/ui/drawer.ts e daystats.ts (textos do terminal interativo e do Meu dia)
+  "Nova sessão": "Nouvelle session",
+  "Abre um Claude Code novo nesta pasta, num terminal interativo": "Ouvre un nouveau Claude Code dans ce dossier, dans un terminal interactif",
+  "em {0}": "dans {0}",
 };

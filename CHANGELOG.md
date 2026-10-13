@@ -30,6 +30,8 @@ visual de sempre, escolha **Nenhum** em Configurações › Aparência.
   instalação) seguem `HABBLAUD_LANG` (`pt-BR`, `en`, `es` ou `fr`) e, sem ele, o idioma do sistema, menos o inglês
   (muita máquina e todo container vêm em inglês por padrão): para o servidor em inglês, `HABBLAUD_LANG=en`.
   `npm run i18n:check` lista os textos ainda sem tradução. O francês veio da comunidade (#67).
+- **README em inglês**, com versões em português (`README.pt-BR.md`), espanhol e francês, e a linha de idiomas no
+  topo de cada um.
 
 ## [0.9.0] - 2026-10-13
 

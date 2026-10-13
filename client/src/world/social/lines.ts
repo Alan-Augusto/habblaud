@@ -61,7 +61,7 @@ export const PINGPONG = {
 };
 
 export const RPS = {
-  count: ['Jo…', tr('Ken…'), tr('Pô!')],
+  count: [tr('Jo…'), tr('Ken…'), tr('Pô!')],
   tie: [tr('Empate! De novo!'), tr('Pensamos igual 😂'), tr('De novo!')],
   win: [tr('Ganhei! 💰'), tr('Hoje é meu dia!'), tr('Passa o 🪙!'), tr('Mole demais 😎'), tr('Sabia!')],
   winHonor: [tr('Ganhei! 😎'), tr('Sabia!'), tr('Hoje é meu dia!')],
