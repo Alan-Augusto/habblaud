@@ -1,4 +1,4 @@
-import { appendFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { log } from '../log';
@@ -72,6 +72,55 @@ describe('FileTail', () => {
     const r = t.read();
     expect(r.reset).toBe(false);
     expect(r.lines).toEqual(['b', 'c']);
+  });
+
+  describe('reescrita no mesmo inode', () => {
+    /** Espera o relógio do sistema de arquivos andar (o ext4 grava os tempos em ticks de alguns ms). */
+    const tick = () => new Promise((ok) => setTimeout(ok, 15));
+
+    it('conteúdo novo do mesmo tamanho recomeça do início', async () => {
+      writeFileSync(file, 'aaaa\nbbbb\ncccc\n');
+      const t = new FileTail(file);
+      expect(t.read().lines).toEqual(['aaaa', 'bbbb', 'cccc']);
+      await tick();
+      writeFileSync(file, 'xxxx\nyyyy\nzzzz\n'); // mesmo inode, mesmo tamanho
+      const r = t.read();
+      expect(r.reset).toBe(true);
+      expect(r.lines).toEqual(['xxxx', 'yyyy', 'zzzz']);
+    });
+
+    it('conteúdo novo maior recomeça do início', async () => {
+      writeFileSync(file, 'um\ndois\n');
+      const t = new FileTail(file);
+      t.read();
+      await tick();
+      writeFileSync(file, 'novo-1\nnovo-2\nnovo-3\n');
+      const r = t.read();
+      expect(r.reset).toBe(true);
+      expect(r.lines).toEqual(['novo-1', 'novo-2', 'novo-3']);
+    });
+
+    it('só acrescentar linhas (o mtime muda, o começo não) não é troca', async () => {
+      writeFileSync(file, 'a\n');
+      const t = new FileTail(file);
+      t.read();
+      await tick();
+      appendFileSync(file, 'b\n');
+      expect(t.read()).toMatchObject({ reset: false, lines: ['b'] });
+      await tick();
+      appendFileSync(file, 'c\n');
+      expect(t.read()).toMatchObject({ reset: false, lines: ['c'] });
+    });
+
+    it('tocar no arquivo sem mudar o conteúdo não é troca', async () => {
+      writeFileSync(file, 'a\nb\n');
+      const t = new FileTail(file);
+      t.read();
+      await tick();
+      const now = new Date();
+      utimesSync(file, now, now);
+      expect(t.read()).toMatchObject({ reset: false, lines: [] });
+    });
   });
 
   it('informa arquivo inexistente sem lançar erro', () => {

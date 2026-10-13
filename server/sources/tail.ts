@@ -193,11 +193,16 @@ export class FileTail {
    * conta. Só que no Linux sem statx (WSL1, seccomp antigo) o Node devolve o ctime no lugar dele, e o ctime muda a
    * cada escrita: a mudança do birthtime só vale se o começo do arquivo também mudou. Um arquivo novo que comece com
    * os mesmos bytes passa como o mesmo, como antes de o birthtime contar.
+   * O mesmo vale para o mtime: reescrever o arquivo no mesmo inode (`writeFileSync` sobre ele) não muda o inode nem o
+   * birthtime, e com o mesmo tamanho (ou maior) o `size < offset` também não pega. Acrescentar linhas muda o mtime
+   * sem mexer no começo, então só uma mudança no começo conta como troca.
    */
-  private replaced(fd: number, st: { ino: number; birthtimeMs: number }): boolean {
+  private replaced(fd: number, st: { ino: number; birthtimeMs: number; mtimeMs: number }): boolean {
     if (this.ino === undefined) return false;
     if (st.ino !== this.ino) return true;
-    if (!(this.birthtimeMs > 0 && st.birthtimeMs > 0 && st.birthtimeMs !== this.birthtimeMs)) return false;
+    const born = this.birthtimeMs > 0 && st.birthtimeMs > 0 && st.birthtimeMs !== this.birthtimeMs;
+    const written = st.mtimeMs !== this.mtimeMs;
+    if (!born && !written) return false;
     return !!this.head && !readHead(fd, this.head.length).equals(this.head);
   }
 
