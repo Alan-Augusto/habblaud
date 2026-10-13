@@ -2,7 +2,7 @@ import type { CharacterFrameRequest, FurnitureKind, Sprite, WallStyle } from '..
 import { mix } from '../../art/core/color';
 import { hash32 } from '../../../../shared/hash';
 import { renderSeasonalProp, type SeasonalProp } from '../../art/seasonal';
-import type { OfficeTheme } from '../api';
+import type { SeasonalTheme } from '../api';
 import type { AreaLayout, WallSegment } from '../layout/types';
 
 const sprites = new Map<SeasonalProp, Sprite>();
@@ -19,15 +19,15 @@ function prop(kind: SeasonalProp): Sprite {
   return sprite;
 }
 
-export function seasonalCostume(theme: OfficeTheme, seed: number): CharacterFrameRequest['costume'] {
+export function seasonalCostume(theme: SeasonalTheme, seed: number): CharacterFrameRequest['costume'] {
   if (theme === 'christmas') return 'santa';
   if (theme === 'halloween') return (['witch', 'pumpkin', 'vampire'] as const)[(seed >>> 0) % 3];
   return undefined;
 }
 
 /** Reutiliza footprints de plantas: nenhuma nova colisão ou mudança de caminhos. */
-export function seasonalFurniture(theme: OfficeTheme, kind: FurnitureKind, area: AreaLayout, seed: number): Sprite | null {
-  if (theme === 'auto' || area.kind === 'restroom') return null;
+export function seasonalFurniture(theme: SeasonalTheme, kind: FurnitureKind, area: AreaLayout, seed: number): Sprite | null {
+  if (theme === 'none' || area.kind === 'restroom') return null;
   if (kind === 'plant_tall') {
     const first = area.furniture.find((f) => f.kind === 'plant_tall');
     if (!first || hash32(first.id) !== seed) return null;
@@ -37,18 +37,18 @@ export function seasonalFurniture(theme: OfficeTheme, kind: FurnitureKind, area:
   return null;
 }
 
-export function seasonalRugColor(theme: OfficeTheme, original: string): string {
+export function seasonalRugColor(theme: SeasonalTheme, original: string): string {
   return theme === 'christmas' ? '#a93649' : theme === 'halloween' ? '#60416f' : original;
 }
 
-export function seasonalWallStyle(theme: OfficeTheme, original: WallStyle): WallStyle {
-  if (theme === 'auto' || original.pattern === 'glass') return original;
+export function seasonalWallStyle(theme: SeasonalTheme, original: WallStyle): WallStyle {
+  if (theme === 'none' || original.pattern === 'glass') return original;
   return { ...original, base: mix(original.base, theme === 'christmas' ? '#ffe3b4' : '#bc97d1', 0.18), trim: theme === 'christmas' ? '#4e7756' : '#725486' };
 }
 
 /** Motivos de tapete (cacheados junto com o piso). */
-export function decorateSeasonalRug(ctx: CanvasRenderingContext2D, theme: OfficeTheme, rug: { x: number; y: number; w: number; h: number }): void {
-  if (theme === 'auto') return;
+export function decorateSeasonalRug(ctx: CanvasRenderingContext2D, theme: SeasonalTheme, rug: { x: number; y: number; w: number; h: number }): void {
+  if (theme === 'none') return;
   const x = Math.round(rug.x), y = Math.round(rug.y), w = Math.floor(rug.w), h = Math.floor(rug.h);
   if (w < 25 || h < 16) return;
   ctx.save();
@@ -77,8 +77,8 @@ export function decorateSeasonalRug(ctx: CanvasRenderingContext2D, theme: Office
 }
 
 /** Enfeites no alto da parede, longe das telas e placas. Os vãos ficam livres. */
-export function decorateSeasonalWall(ctx: CanvasRenderingContext2D, theme: OfficeTheme, wall: WallSegment): void {
-  if (theme === 'auto' || wall.kind !== 'face') return;
+export function decorateSeasonalWall(ctx: CanvasRenderingContext2D, theme: SeasonalTheme, wall: WallSegment): void {
+  if (theme === 'none' || wall.kind !== 'face') return;
   ctx.save();
   const x0 = Math.round(wall.x + 3), end = Math.floor(wall.x + wall.w - 3), y = Math.round(wall.y + 5);
   for (let x = x0; x < end; x++) {
@@ -120,14 +120,14 @@ export function decorateSeasonalWall(ctx: CanvasRenderingContext2D, theme: Offic
 }
 
 /** Guirlandas nas molduras dos elevadores (sem cobrir a porta animada). */
-export function decorateElevator(ctx: CanvasRenderingContext2D, theme: OfficeTheme, x: number, y: number): void {
-  if (theme === 'auto') return;
+export function decorateElevator(ctx: CanvasRenderingContext2D, theme: SeasonalTheme, x: number, y: number): void {
+  if (theme === 'none') return;
   const sprite = prop(theme === 'christmas' ? 'wreath' : 'bat');
   ctx.drawImage(sprite.canvas, Math.round(x - sprite.ax), Math.round(y - 19 - sprite.ay));
 }
 
-const glows = new Map<OfficeTheme, HTMLCanvasElement>();
-function glowSprite(theme: OfficeTheme): HTMLCanvasElement {
+const glows = new Map<SeasonalTheme, HTMLCanvasElement>();
+function glowSprite(theme: SeasonalTheme): HTMLCanvasElement {
   let canvas = glows.get(theme);
   if (!canvas) {
     canvas = document.createElement('canvas');
@@ -144,8 +144,8 @@ function glowSprite(theme: OfficeTheme): HTMLCanvasElement {
 }
 
 /** Luz decorativa suave, limitada à face da parede. Não interfere com salas apagadas. */
-export function drawSeasonalLights(ctx: CanvasRenderingContext2D, theme: OfficeTheme, layout: AreaLayout, light: number): void {
-  if (theme === 'auto' || light <= 0.01) return;
+export function drawSeasonalLights(ctx: CanvasRenderingContext2D, theme: SeasonalTheme, layout: AreaLayout, light: number): void {
+  if (theme === 'none' || light <= 0.01) return;
   ctx.save();
   for (const wall of layout.walls) {
     if (wall.kind !== 'face') continue;
@@ -166,7 +166,7 @@ export function drawSeasonalLights(ctx: CanvasRenderingContext2D, theme: OfficeT
   ctx.restore();
 }
 
-export function drawSeasonalWindow(ctx: CanvasRenderingContext2D, theme: OfficeTheme, glass: { x: number; y: number; w: number; h: number }, now: number, seed: number): void {
+export function drawSeasonalWindow(ctx: CanvasRenderingContext2D, theme: SeasonalTheme, glass: { x: number; y: number; w: number; h: number }, now: number, seed: number): void {
   if (theme !== 'christmas') return;
   ctx.save();
   ctx.beginPath();

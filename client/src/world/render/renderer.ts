@@ -2,7 +2,7 @@
 // ordenadas por profundidade -> luz/escuridão -> ícones. A passada em espaço de tela (texto
 // nítido) fica em overlay.ts.
 import { TILE, type ArtModule, type CharacterFrameRequest, type IconName, type ScreenMode, type Sprite } from '../../art/api';
-import type { OfficeTheme, WorldOptions } from '../api';
+import type { SeasonalTheme, WorldOptions } from '../api';
 import type { WorldAssets } from '../assets';
 import type { Camera } from '../camera';
 import { BUILDING_H, COL_W, CORE_COLS, CORRIDOR_Y } from '../constants';
@@ -115,7 +115,7 @@ export class Renderer {
   night = 0;
   private clearColor = '#7fae62';
   private grass: CanvasPattern | null = null;
-  private theme: OfficeTheme = 'auto';
+  private theme: SeasonalTheme = 'none';
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -136,7 +136,7 @@ export class Renderer {
   // =================================================================== sincronização com a simulação
 
   /** Mantém caches e visuais coerentes com o prédio atual. */
-  sync(theme: OfficeTheme = 'auto'): void {
+  sync(theme: SeasonalTheme = 'none'): void {
     const sim = this.sim;
     const themeChanged = theme !== this.theme;
     this.theme = theme;
@@ -496,7 +496,7 @@ export class Renderer {
     // ---- luz: noite, salas apagadas, brilhos
     this.night = this.lighting.night;
     this.drawLighting(now, vx0, vy0, vx1, vy1);
-    if (this.theme !== 'auto') {
+    if (this.theme !== 'none') {
       for (const vis of this.areas.values()) {
         if (vis.room && vis.room.phase !== 'ready') continue;
         if (!visible(vis.px.x, vis.px.y, vis.px.w, vis.px.h)) continue;

@@ -68,7 +68,7 @@ describe('preferências', () => {
   it('temas: preserva preferências antigas e recupera valores inválidos', () => {
     expect(sanitizePrefs({ daylight: 'night' })).toMatchObject({ theme: 'auto', daylight: 'night' });
     expect(sanitizePrefs({ theme: 'invalid' }).theme).toBe('auto');
-    for (const theme of ['christmas', 'halloween', 'auto'] as const) {
+    for (const theme of ['christmas', 'halloween', 'none', 'auto'] as const) {
       const st = memoryStorage();
       savePrefs(st, { ...DEFAULT_PREFS, theme });
       expect(loadPrefs(st).theme).toBe(theme);

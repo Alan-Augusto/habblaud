@@ -110,10 +110,10 @@ export class SettingsPopover implements UiComponent {
     this.daylight.row.append(h('span', { class: 'ui-set__hint', text: 'Automático: céu, luzes e sol nas janelas seguem a hora local.' }));
     this.theme = segmented<UiPrefs['theme']>(
       'Tema do escritório',
-      [['auto', 'Automático'], ['christmas', 'Natal'], ['halloween', 'Halloween']],
+      [['auto', 'Automático'], ['none', 'Nenhum'], ['christmas', 'Natal'], ['halloween', 'Halloween']],
       (v) => ctx.updatePrefs({ theme: v }),
     );
-    this.theme.row.append(h('span', { class: 'ui-set__hint', text: 'Automático mantém o visual original. Natal e Halloween decoram o escritório e os personagens.' }));
+    this.theme.row.append(h('span', { class: 'ui-set__hint', text: 'Automático: Halloween em outubro e Natal de 1º de novembro a 26 de dezembro; no resto do ano, o visual original. Nenhum: sempre o original.' }));
     this.soundGroup = new SoundSettingsGroup(ctx, sound);
 
     this.demoGroup = h(

@@ -343,12 +343,21 @@ um **chip colorido com a letra da conta** (C, D…).
 
 Em **Configurações → Aparência → Tema do escritório**, escolha:
 
-- **Automático** (padrão): mantém o visual original, sem trocar de tema pelas datas do calendário.
+- **Automático** (padrão): segue o calendário, na hora local. Halloween de 1º a 31 de outubro, Natal de 1º de
+  novembro a 26 de dezembro e, no resto do ano, o visual original.
+- **Nenhum**: sempre o visual original.
 - **Natal**: guirlandas, luzes quentes, árvores com presentes, tapetes natalinos, neve nas janelas e gorros nos personagens.
 - **Halloween**: abóboras, fantasmas decorativos, teias, morcegos, luzes roxas, tapetes temáticos e acessórios de fantasia.
 
 A troca é imediata e a escolha fica salva neste navegador. Os temas preservam os caminhos,
 as atividades e as animações dos agentes. O ciclo dia/noite continua sendo uma opção independente.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/seasonal-christmas.png" alt="Escritório no tema Natal: árvores com presentes nos cantos das salas, guirlandas e luzes nas paredes, tapetes vermelhos e personagens de gorro" /></td>
+    <td width="50%"><img src="docs/screenshots/seasonal-halloween.png" alt="Escritório no tema Halloween: abóboras e fantasmas no lugar das plantas, teias e morcegos nas paredes, tapetes roxos e personagens fantasiados" /></td>
+  </tr>
+</table>
 
 ### Dia, noite e sons
 
