@@ -16,6 +16,9 @@ do meio (0.**3**.0).
   `/model opus`) roda o comando na sessão, como se você o tivesse digitado no terminal dela; antes voltava como "não
   entregue". Com o agente ocupado, o comando espera o turno terminar, e um comando que a sessão não conhece volta
   como não entregue, com o motivo. Sessões abertas pegam a mudança com `/reload-plugins`.
+- Comandos que abrem um painel no terminal da sessão (`/usage`, `/config`, `/help`, `/model` sem argumento…) não são
+  mandados pela caixa: ela avisa por quê e o texto fica nela, em vez de deixar um painel aberto num terminal que
+  ninguém está olhando.
 
 ## [0.11.0] - 2026-10-13
 

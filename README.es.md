@@ -579,8 +579,9 @@ ventana correcta.
 
 - Los **comandos de barra** también valen: un mensaje que empieza con `/` (`/compact`, `/model opus`) ejecuta el
   comando en la sesión, como si lo hubieras escrito. Con el agente ocupado, el comando espera a que termine el
-  turno. Un comando que la sesión no conoce vuelve como **no se entregó**. Los que abren un panel (`/config`,
-  `/model` sin argumento) lo abren en el terminal de la sesión, no en la página. Solo en Claude Code: en Codex, el
+  turno. Un comando que la sesión no conoce vuelve como **no se entregó**. Los que abren un panel en la terminal (`/usage`,
+  `/config`, `/model` sin argumento) no se envían: el cuadro avisa y el texto se queda en él. La salida de los
+  comandos de texto aparece en la terminal de la oficina. Solo en Claude Code: en Codex, el
   texto va como un mensaje normal.
 - El cuadro muestra el estado: **en cola** (la sesión busca los mensajes cada 2 segundos), **entregado** o **no se
   entregó**, con el motivo. Con el agente ocupado, el mensaje espera y entra cuando termine su turno, como un prompt

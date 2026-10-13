@@ -156,6 +156,20 @@ describe('MessageRegistry: mandar', () => {
   });
 });
 
+describe('MessageRegistry: comandos de barra', () => {
+  it('comando de painel não entra na fila (unavailable, com o motivo); os de texto e os com argumento passam', () => {
+    const { registry } = setup();
+    registry.inbox({ session: SESSION });
+    expect(registry.send({ agentId: MAIN, text: '/usage' })).toEqual({ error: 'unavailable', reason: expect.stringMatching(/\/usage abre um painel/) });
+    expect(registry.send({ agentId: MAIN, text: '/Config' })).toEqual({ error: 'unavailable', reason: expect.stringMatching(/\/config abre um painel/) });
+    expect(registry.send({ agentId: MAIN, text: '/model' })).toEqual({ error: 'unavailable', reason: expect.stringMatching(/\/model sem argumento/) });
+    expect(registry.size).toBe(0);
+    expect('message' in registry.send({ agentId: MAIN, text: '/model opus' })).toBe(true);
+    expect('message' in registry.send({ agentId: MAIN, text: '/compact' })).toBe(true);
+    expect('message' in registry.send({ agentId: MAIN, text: 'como eu abro o /usage?' })).toBe(true);
+  });
+});
+
 describe('MessageRegistry: entrega pelo plugin', () => {
   it('a rodada entrega as mensagens do próprio agente na ordem (até 5) com o texto como foi digitado e marca sent', () => {
     const { registry, clock } = setup();

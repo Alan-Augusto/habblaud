@@ -105,6 +105,8 @@ export const ES: Readonly<Record<string, string>> = {
   "erro desconhecido": "error desconocido",
   "Não foi entregue: {0}": "No se entregó: {0}",
   "o Habblaud não conhece mais esta mensagem (ele reiniciou?)": "Habblaud ya no conoce este mensaje (¿se reinició?)",
+  "/{0} abre um painel no terminal da sessão, que o escritório não mostra: rode esse comando no Claude Code": "/{0} abre un panel en la terminal de la sesión, que la oficina no muestra: ejecuta ese comando en Claude Code",
+  "/{0} sem argumento abre um painel no terminal da sessão, que o escritório não mostra: mande com o argumento (ex.: /model opus) ou rode no Claude Code": "/{0} sin argumento abre un panel en la terminal de la sesión, que la oficina no muestra: envíalo con el argumento (p. ej. /model opus) o ejecútalo en Claude Code",
   "sem notícia da entrega: confira no terminal do Claude Code": "sin noticias de la entrega: revisa la terminal de Claude Code",
   "sem notícia da entrega: confira no Codex": "sin noticias de la entrega: revisa Codex",
   "não foi possível falar com o Habblaud": "no se pudo contactar con Habblaud",

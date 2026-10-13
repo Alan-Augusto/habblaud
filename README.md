@@ -551,8 +551,9 @@ and waits for the next request, give a new instruction or correct its course, wi
 
 - **Slash commands** work too: a message that starts with `/` (`/compact`, `/model opus`) runs the command in the
   session, as if you had typed it. With the agent busy, the command waits for the turn to end. A command the
-  session does not know comes back as **not delivered**. Those that open a panel (`/config`, `/model` with no
-  argument) open it in the session's terminal, not on the page. Claude Code only: in Codex, the text goes as a
+  session does not know comes back as **not delivered**. Those that open a panel in the terminal (`/usage`, `/config`, `/model`
+  with no argument) are not sent: the box says so and keeps the text. The output of text commands shows up in the
+  office terminal. Claude Code only: in Codex, the text goes as a
   regular message.
 - The box shows the status: **queued** (the session fetches messages every 2 seconds), **delivered** or **not
   delivered**, with the reason. With the agent busy, the message waits and goes in when it finishes its turn, like a

@@ -19,7 +19,7 @@
 // o auxiliar visto há até PRESENCE_MS). `delivered` = entrou na fila da sessão (entra quando ela ficar ociosa).
 import { randomBytes } from 'node:crypto';
 import { truncate } from '../../shared/activity';
-import { describeMessage, MESSAGE_MAX } from '../../shared/messages';
+import { describeMessage, MESSAGE_MAX, panelCommandReason } from '../../shared/messages';
 import type { Activity, AgentInfo, InboxMessage, OutboxMessage } from '../../shared/types';
 import { errMsg, log } from '../log';
 import type { CodexQueueResult, CodexQueueRunner } from './codex';
@@ -253,8 +253,8 @@ export class MessageRegistry {
 
   /**
    * Mensagem vinda da página. `{error}`: agente desconhecido (not-found), que não recebe mensagens (unavailable, com
-   * o motivo: subagente, saiu/concluiu, sessão sem o plugin ou Codex sem entregador) ou com mensagens demais esperando
-   * (too-many). Corpo inválido: lança InvalidRequest.
+   * o motivo: subagente, saiu/concluiu, sessão sem o plugin, Codex sem entregador ou um comando de barra que abriria um
+   * painel no terminal da sessão) ou com mensagens demais esperando (too-many). Corpo inválido: lança InvalidRequest.
    */
   send(raw: unknown): SendResult {
     const { agentId, text } = parseSend(raw);
@@ -264,6 +264,10 @@ export class MessageRegistry {
     if (!agent) return { error: 'not-found' };
     const reason = unavailableReason(agent, real ? this.canMessage(agentId) : demo!.canMessage === true);
     if (reason) return { error: 'unavailable', reason };
+    // Comando de painel do Claude Code: abriria um menu no terminal da sessão, longe de quem mandou (o texto fica na
+    // caixa). No Codex não há comandos de barra por aqui: o texto vai como mensagem comum.
+    const panel = agent.provider === 'codex' ? undefined : panelCommandReason(text);
+    if (panel) return { error: 'unavailable', reason: panel };
     let open = 0;
     for (const e of this.messages.values()) if (e.msg.agentId === agentId && !isFinal(e)) open++;
     if (open >= MAX_OPEN) return { error: 'too-many' };
