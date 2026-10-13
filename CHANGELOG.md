@@ -36,6 +36,8 @@ do meio (0.**3**.0).
 - Uma imagem do Codex gravada no Windows (disco `C:` ou pasta de rede `\\servidor\...`) aparecia com o caminho
   errado na atividade e no terminal (`/C:/...`, ou a pasta sem o servidor). Agora o caminho é o do arquivo de origem.
 - Salvar um personagem ou voltar ao sorteio não fecha mais outra edição aberta enquanto a resposta chega, nem mostra nela um erro da edição anterior.
+- Uma linha enorme numa conversa, ou uma linha que nunca fechava, ficava inteira na memória e a leitura
+  ia ficando mais lenta. Uma linha acima de 8 MB agora é ignorada, e o Habblaud segue na linha seguinte.
 
 ## [0.8.0] - 2026-10-09
 
