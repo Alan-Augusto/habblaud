@@ -6,6 +6,7 @@ import type { AgentInfo } from '../../shared/types';
 import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
+import { AttachmentStore, type Attachment } from '../spawn/attachments';
 import {
   COMMAND_DESCRIPTION_MAX,
   COMMANDS_MAX,
@@ -388,6 +389,93 @@ describe('MessageRegistry: comando de painel e a origem dele na sessão', () => 
     registry.inbox({ ...round, commands: [{ name: 'status', description: 'Situação do deploy', source: 'plugin' }, { name: 'usage', description: 'Uso do plano', source: 'builtin' }] });
     sent(registry.send({ agentId: MAIN, text: '/status' }));
     expect(registry.send({ agentId: MAIN, text: '/usage' })).toMatchObject({ error: 'unavailable', reason: expect.stringMatching(/painel/) });
+  });
+});
+
+describe('MessageRegistry: anexos', () => {
+  const PNG: Attachment = { name: 'tela.png', type: 'image/png', data: Buffer.from('png') };
+
+  /** Registro com anexos: `write` fica pendente até `settle` ser chamado. */
+  function withAttachments() {
+    const base = setup();
+    const store = new AttachmentStore();
+    const writes: Array<{ id: string; names: string[] }> = [];
+    let settle: (r: string[] | { error: string }) => void = () => {};
+    const registry = new MessageRegistry({
+      office: base.office,
+      now: base.clock.now,
+      attachments: {
+        store,
+        write: (id, files) => {
+          writes.push({ id, names: files.map((f) => f.name) });
+          return new Promise((ok) => (settle = ok));
+        },
+      },
+    });
+    const put = () => (store.put(PNG) as { id: string }).id;
+    return { ...base, registry, store, writes, put, settle: (r: string[] | { error: string }) => settle(r) };
+  }
+  const flush = () => new Promise((ok) => setTimeout(ok, 0));
+
+  it('a mensagem espera a gravação e sai para a sessão com os caminhos no fim do texto', async () => {
+    const t = withAttachments();
+    t.registry.inbox({ session: SESSION });
+    const id = sent(t.registry.send({ agentId: MAIN, text: 'olha esta tela', attachments: [t.put()] }));
+    expect(t.writes).toEqual([{ id, names: ['tela.png'] }]);
+    // Gravando: continua na fila e a sessão ainda não a recebe.
+    expect(t.registry.get(id)).toMatchObject({ status: 'queued' });
+    expect(t.registry.inbox({ session: SESSION })).toEqual([]);
+    t.settle(['/home/u/.habblaud/attachments/20261013-120000-m-abc/tela.png']);
+    await flush();
+    expect(t.registry.inbox({ session: SESSION })).toEqual([{ id, text: 'olha esta tela\n\nAnexo enviado pelo Habblaud:\n- /home/u/.habblaud/attachments/20261013-120000-m-abc/tela.png' }]);
+  });
+
+  it('só anexos, sem texto: vale; sem anexos, o texto vazio continua recusado', async () => {
+    const t = withAttachments();
+    t.registry.inbox({ session: SESSION });
+    const id = sent(t.registry.send({ agentId: MAIN, text: '', attachments: [t.put(), t.put()] }));
+    t.settle(['/a/tela.png', '/a/tela-2.png']);
+    await flush();
+    expect(t.registry.inbox({ session: SESSION })).toEqual([{ id, text: 'Anexos enviados pelo Habblaud:\n- /a/tela.png\n- /a/tela-2.png' }]);
+    expect(() => t.registry.send({ agentId: MAIN, text: '' })).toThrow();
+    expect(() => t.registry.send({ agentId: MAIN, text: 'x', attachments: 'a' })).toThrow();
+    expect(() => t.registry.send({ agentId: MAIN, text: 'x', attachments: ['1', '2', '3', '4', '5', '6'] })).toThrow();
+  });
+
+  it('não deu para gravar: a mensagem falha com o motivo e não sai', async () => {
+    const t = withAttachments();
+    t.registry.inbox({ session: SESSION });
+    const id = sent(t.registry.send({ agentId: MAIN, text: 'oi', attachments: [t.put()] }));
+    t.settle({ error: 'o auxiliar do computador (npm run codex:bridge) não está rodando' });
+    await flush();
+    expect(t.registry.get(id)).toMatchObject({ status: 'failed', error: expect.stringMatching(/gravar os anexos.*codex:bridge/) });
+    expect(t.registry.inbox({ session: SESSION })).toEqual([]);
+  });
+
+  it('anexo desconhecido ou já usado: recusada com o motivo, e a mensagem recusada antes não gasta o anexo', () => {
+    const t = withAttachments();
+    const a = t.put();
+    // Sem o plugin conectado a mensagem é recusada: o anexo continua no depósito para a próxima tentativa.
+    expect(t.registry.send({ agentId: MAIN, text: 'oi', attachments: [a] })).toMatchObject({ error: 'unavailable' });
+    t.registry.inbox({ session: SESSION });
+    sent(t.registry.send({ agentId: MAIN, text: 'oi', attachments: [a] }));
+    expect(t.registry.send({ agentId: MAIN, text: 'de novo', attachments: [a] })).toMatchObject({ error: 'unavailable', reason: expect.stringMatching(/expirou/) });
+    // Registro sem anexos ligados.
+    const plain = setup();
+    plain.registry.inbox({ session: SESSION });
+    expect(plain.registry.send({ agentId: MAIN, text: 'oi', attachments: ['x'] })).toEqual({ error: 'unavailable', reason: 'anexos desligados' });
+  });
+
+  it('o agente sai enquanto os anexos são gravados: a mensagem falha e o texto não volta', async () => {
+    const t = withAttachments();
+    t.registry.inbox({ session: SESSION });
+    const id = sent(t.registry.send({ agentId: MAIN, text: 'oi', attachments: [t.put()] }));
+    t.office.closeMain(MAIN);
+    t.registry.tick();
+    expect(t.registry.get(id)).toMatchObject({ status: 'failed', error: ERR_GONE });
+    t.settle(['/a/tela.png']);
+    await flush();
+    expect(t.registry.get(id)).toMatchObject({ status: 'failed', error: ERR_GONE });
   });
 });
 

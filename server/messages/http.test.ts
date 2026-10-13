@@ -16,6 +16,7 @@ import { Office } from '../model/office';
 import { request } from '../test/permission-server';
 import { tempDir } from '../test/fixtures';
 import { createMessageRoutes, type ProjectLister } from './http';
+import { AttachmentStore } from '../spawn/attachments';
 import { MessageRegistry, type MessageRegistryOptions } from './registry';
 
 setQuiet(true);
@@ -31,7 +32,7 @@ interface MessageServer {
 }
 
 /** Office + Hub + rotas de verdade numa porta livre do 127.0.0.1, com um agente principal na sessão "sess-1". */
-async function serveMessages(opts: { enabled?: boolean; demo?: boolean; registry?: Partial<MessageRegistryOptions>; listFiles?: ProjectLister } = {}): Promise<MessageServer> {
+async function serveMessages(opts: { enabled?: boolean; demo?: boolean; registry?: Partial<MessageRegistryOptions>; listFiles?: ProjectLister; attachments?: AttachmentStore } = {}): Promise<MessageServer> {
   const tmp = tempDir();
   const enabled = opts.enabled ?? true;
   const late: { registry?: MessageRegistry } = {};
@@ -66,7 +67,7 @@ async function serveMessages(opts: { enabled?: boolean; demo?: boolean; registry
     version: 't',
     inDocker: false,
     terminal: true,
-    messages: registry ? createMessageRoutes(registry, opts.listFiles) : undefined,
+    messages: registry ? createMessageRoutes(registry, opts.listFiles, opts.attachments) : undefined,
   });
   const guard = createRequestGuard({ allowedHosts: new Set(['habblaud.lan']) });
   const server = http.createServer((req, res) => {
@@ -254,6 +255,28 @@ describe('rotas', () => {
 
     srv = await serveMessages();
     expect((await request(srv.base, path)).status).toBe(503);
+  });
+
+  it('anexos: a página manda o arquivo (201 com o id) e a mensagem sai para a sessão com o caminho gravado', async () => {
+    const store = new AttachmentStore();
+    srv = await serveMessages({ attachments: store, registry: { attachments: { store, write: async (_id, files) => files.map((f) => `/anexos/${f.name}`) } } });
+    const up = await post(srv, '/api/messages/attachments', { name: 'pasta/tela.png', type: 'image/png', data: Buffer.from('png').toString('base64') });
+    expect(up).toMatchObject({ status: 201, json: { id: expect.any(String), name: 'tela.png', size: 3 } });
+    expect((await post(srv, '/api/messages/attachments', { name: 'vazio.png', data: '' })).status).toBe(400);
+    expect((await request(srv.base, '/api/messages/attachments')).status).toBe(405);
+
+    await post(srv, '/api/mod/inbox', { session: SESSION, account: 'acc' });
+    const id = (up.json as { id: string }).id;
+    expect((await post(srv, '/api/messages', { agentId: MAIN, text: 'veja', attachments: [id] })).status).toBe(201);
+    await sleep(20);
+    const inbox = (await post(srv, '/api/mod/inbox', { session: SESSION, account: 'acc' })).json as { messages: InboxMessage[] };
+    expect(inbox.messages.map((m) => m.text)).toEqual(['veja\n\nAnexo enviado pelo Habblaud:\n- /anexos/tela.png']);
+    // O mesmo anexo não serve a outra mensagem.
+    expect(await post(srv, '/api/messages', { agentId: MAIN, text: 'de novo', attachments: [id] })).toMatchObject({ status: 409, json: { error: expect.stringMatching(/expirou/) } });
+    await srv.close();
+
+    srv = await serveMessages();
+    expect((await post(srv, '/api/messages/attachments', { name: 'tela.png', data: 'cG5n' })).status).toBe(403);
   });
 
   it('fluxo: plugin conecta (canMessage) → página manda (201) → plugin busca → confirma → página consulta (delivered) e o feed mostra', async () => {

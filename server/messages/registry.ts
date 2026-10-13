@@ -22,6 +22,7 @@ import { maskSecrets, truncate } from '../../shared/activity';
 import { describeMessage, MESSAGE_MAX, panelCommandReason, slashCommandOf } from '../../shared/messages';
 import type { Activity, AgentInfo, InboxMessage, OutboxMessage, SessionCommand } from '../../shared/types';
 import { errMsg, log } from '../log';
+import { ATTACHMENTS_PER_MESSAGE, messageWithAttachments, type Attachment, type AttachmentStore } from '../spawn/attachments';
 import type { CodexQueueResult, CodexQueueRunner } from './codex';
 import { tr } from '../../shared/i18n';
 
@@ -78,6 +79,16 @@ export interface CodexDeliveryOptions {
   homeOf: (account: string) => string | undefined;
 }
 
+/**
+ * Anexos de uma mensagem: a página manda cada arquivo antes (POST /api/messages/attachments, que os guarda em `store`)
+ * e a mensagem leva os ids. `write` grava os arquivos no computador da sessão e devolve os caminhos, na ordem (o
+ * servidor no modo Node, o auxiliar do host no Docker): a mensagem só sai para a sessão com eles no fim do texto.
+ */
+export interface AttachmentDeliveryOptions {
+  store: AttachmentStore;
+  write: (id: string, files: readonly Attachment[]) => Promise<string[] | { error: string }>;
+}
+
 export interface MessageRegistryOptions {
   office: OfficeLike;
   /** Agente do demo (Office.demoAgent): esses só existem no snapshot. */
@@ -86,6 +97,8 @@ export interface MessageRegistryOptions {
   demoDeliver?: (agentId: string, text: string) => boolean;
   /** Mensagens aos agentes do Codex; ausente = eles não recebem. */
   codex?: CodexDeliveryOptions;
+  /** Anexos das mensagens (imagens e arquivos colados ou arrastados na caixa); ausente = mensagens sem anexos. */
+  attachments?: AttachmentDeliveryOptions;
   now?: () => number;
   /** Intervalo do relógio interno (start). */
   tickMs?: number;
@@ -130,6 +143,8 @@ interface Entry {
   via?: 'node' | 'bridge';
   /** Falhou por falta de confirmação: uma confirmação atrasada ainda corrige a situação. */
   late?: boolean;
+  /** Os anexos ainda estão sendo gravados no computador: a mensagem espera na fila, sem sair para a sessão. */
+  preparing?: boolean;
 }
 
 type Rec = Record<string, unknown>;
@@ -184,14 +199,20 @@ export function parseCommands(raw: unknown): SessionCommand[] {
   return out;
 }
 
-/** Corpo de POST /api/messages: `{agentId, text}`. O texto não é alterado (nem aparado). */
-export function parseSend(raw: unknown): { agentId: string; text: string } {
+/**
+ * Corpo de POST /api/messages: `{agentId, text, attachments?}`. O texto não é alterado (nem aparado) e só pode vir
+ * vazio com anexos (os ids de POST /api/messages/attachments).
+ */
+export function parseSend(raw: unknown): { agentId: string; text: string; attachments: string[] } {
   const r = rec(raw);
   const agentId = shortStr(r?.agentId, ID_MAX);
-  if (!r || !agentId || typeof r.text !== 'string') throw new InvalidRequest('esperado {agentId, text}');
-  if (!r.text.trim()) throw new InvalidRequest(tr('a mensagem está vazia'));
+  if (!r || !agentId || typeof r.text !== 'string') throw new InvalidRequest('esperado {agentId, text, attachments?}');
+  const ids = r.attachments ?? [];
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string' || !id || id.length > ID_MAX)) throw new InvalidRequest(tr('anexos inválidos'));
+  if (ids.length > ATTACHMENTS_PER_MESSAGE) throw new InvalidRequest(tr('no máximo {0} anexos por mensagem', [ATTACHMENTS_PER_MESSAGE]));
+  if (!r.text.trim() && !ids.length) throw new InvalidRequest(tr('a mensagem está vazia'));
   if (r.text.length > MAX_TEXT) throw new InvalidRequest(tr('a mensagem passa de 20.000 caracteres'));
-  return { agentId, text: r.text };
+  return { agentId, text: r.text, attachments: ids as string[] };
 }
 
 /** Resultados de uma confirmação ({results: [{id, ok, error?}]}): os válidos, até ACK_MAX. */
@@ -287,7 +308,7 @@ export class MessageRegistry {
    * painel no terminal da sessão) ou com mensagens demais esperando (too-many). Corpo inválido: lança InvalidRequest.
    */
   send(raw: unknown): SendResult {
-    const { agentId, text } = parseSend(raw);
+    const { agentId, text, attachments } = parseSend(raw);
     const real = this.opts.office.get(agentId);
     const demo = real ? undefined : this.opts.demoAgent?.(agentId);
     const agent = real ?? demo;
@@ -301,6 +322,15 @@ export class MessageRegistry {
     let open = 0;
     for (const e of this.messages.values()) if (e.msg.agentId === agentId && !isFinal(e)) open++;
     if (open >= MAX_OPEN) return { error: 'too-many' };
+    // Os anexos saem do depósito só agora, com a mensagem aceita (cada um serve a uma mensagem só).
+    let files: Attachment[] = [];
+    if (attachments.length) {
+      const delivery = this.opts.attachments;
+      if (!delivery) return { error: 'unavailable', reason: tr('anexos desligados') };
+      const taken = delivery.store.take(attachments);
+      if ('error' in taken) return { error: 'unavailable', reason: taken.error };
+      files = taken;
+    }
 
     const now = this.now();
     const id = `m-${now.toString(36)}-${++this.seq}-${randomBytes(9).toString('base64url')}`;
@@ -309,7 +339,8 @@ export class MessageRegistry {
     else if (real?.provider === 'codex') entry.codex = true;
     this.messages.set(id, entry);
     const out = { ...entry.msg };
-    if (entry.codex) this.pumpCodex();
+    if (files.length) this.attach(entry, files);
+    else if (entry.codex) this.pumpCodex();
     return { message: out };
   }
 
@@ -341,7 +372,7 @@ export class MessageRegistry {
     const out: InboxMessage[] = [];
     for (const e of this.messages.values()) {
       if (out.length >= INBOX_BATCH) break;
-      if (e.demo || e.codex || e.msg.agentId !== agent.id || e.msg.status !== 'queued' || e.target !== session) continue;
+      if (e.demo || e.codex || e.preparing || e.msg.agentId !== agent.id || e.msg.status !== 'queued' || e.target !== session) continue;
       this.setStatus(e, 'sent', now);
       e.session = session;
       e.sentAt = now;
@@ -417,7 +448,7 @@ export class MessageRegistry {
     const out: CodexBridgeMessage[] = [];
     for (const e of this.messages.values()) {
       if (out.length >= INBOX_BATCH) break;
-      if (!e.codex || e.msg.status !== 'queued' || busy.has(e.msg.agentId)) continue;
+      if (!e.codex || e.preparing || e.msg.status !== 'queued' || busy.has(e.msg.agentId)) continue;
       busy.add(e.msg.agentId);
       const target = this.codexTarget(e, now);
       if (!target) continue;
@@ -497,6 +528,29 @@ export class MessageRegistry {
       .find((a) => a.kind === 'main' && a.provider !== 'codex' && a.sessionId === session && (!account || a.account === account) && present(a));
   }
 
+  /**
+   * Grava os anexos da mensagem no computador da sessão e põe os caminhos no fim do texto; até lá ela fica na fila
+   * sem sair. Não gravou: a mensagem falha, com o motivo. A do demo não tem sessão: os anexos são descartados.
+   */
+  private attach(e: Entry, files: readonly Attachment[]): void {
+    const delivery = this.opts.attachments;
+    const bytes = files.reduce((n, f) => n + f.data.length, 0);
+    if (!delivery || e.demo) return void delivery?.store.release(bytes);
+    e.preparing = true;
+    delivery
+      .write(e.msg.id, files)
+      .catch((err: unknown) => ({ error: errMsg(err) }))
+      .then((r) => {
+        delivery.store.release(bytes);
+        delete e.preparing;
+        // Enquanto gravava, a mensagem pode ter falhado (o agente saiu, o prazo da fila passou).
+        if (isFinal(e)) return;
+        if ('error' in r) return this.fail(e, this.now(), tr('não deu para gravar os anexos: {0}', [truncate(r.error, ERROR_MAX)]));
+        e.text = messageWithAttachments(e.text, r);
+        if (e.codex) this.pumpCodex();
+      });
+  }
+
   /** De onde vem o comando de barra de `text` na sessão do agente; sem a lista dela (ou sem o comando nela), undefined. */
   private commandSource(agentId: string, text: string): SessionCommand['source'] | undefined {
     const name = slashCommandOf(text)?.command;
@@ -528,7 +582,7 @@ export class MessageRegistry {
     for (const e of this.messages.values()) if (e.codex && e.msg.status === 'sent') busy.add(e.msg.agentId);
     const now = this.now();
     for (const e of this.messages.values()) {
-      if (!e.codex || e.msg.status !== 'queued' || busy.has(e.msg.agentId)) continue;
+      if (!e.codex || e.preparing || e.msg.status !== 'queued' || busy.has(e.msg.agentId)) continue;
       busy.add(e.msg.agentId);
       const target = this.codexTarget(e, now);
       if (!target) continue;

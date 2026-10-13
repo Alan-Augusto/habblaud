@@ -1,13 +1,18 @@
 // Rotas das mensagens pelo escritório. A trava (recurso ligado + Host local) já foi conferida em http/app.ts; o
 // guard (http/guard.ts) já exigiu JSON e Origin local nos POST (contra CSRF).
 //
-//   POST /api/messages          (página)  {agentId, text}: 201 OutboxMessage (queued) | 400 | 404 | 409 | 429
+//   POST /api/messages          (página)  {agentId, text, attachments?}: 201 OutboxMessage (queued) | 400 | 404 | 409 | 429
+//                                         (`attachments` = ids de POST /api/messages/attachments; com eles o texto
+//                                         pode vir vazio)
 //   GET  /api/messages/:id      (página)  situação da mensagem: 200 OutboxMessage | 404
 //   GET  /api/messages/commands/:agentId
 //                               (página)  comandos de barra da sessão do agente: 200 {commands: SessionCommand[]}
 //   GET  /api/messages/files/:agentId?q=texto
 //                               (página)  arquivos do projeto do agente que casam com o texto, para citar com `@`:
 //                                         200 {files: string[], truncated} | 404 | 503 (sem o auxiliar do host)
+//   POST /api/messages/attachments
+//                               (página)  {name, type?, data (base64)}: um anexo para a próxima mensagem (imagem ou
+//                                         arquivo colado ou arrastado na caixa): 201 {id, name, size} | 400 | 403 | 429
 //   POST /api/mod/inbox         (plugin)  {session, account?, commands?}: 200 {messages: InboxMessage[], needCommands?}
 //                                         (marca a presença; `commands` = a lista de comandos de barra da sessão, que
 //                                         o plugin manda quando ela muda ou quando a resposta traz `needCommands`)
@@ -19,6 +24,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, readJson, sendJson } from '../http/app';
 import { rankFiles } from '../../shared/messages';
 import type { ListResult } from '../deliveries/fetcher';
+import { ATTACHMENT_BODY_MAX, parseAttachment, type AttachmentStore } from '../spawn/attachments';
 import { InvalidRequest, MAX_OPEN, type MessageRegistry } from './registry';
 import { tr } from '../../shared/i18n';
 
@@ -43,7 +49,21 @@ function fail(res: ServerResponse, err: unknown): void {
   else sendJson(res, 500, { error: tr('erro interno') });
 }
 
-export function createMessageRoutes(registry: MessageRegistry, listFiles?: ProjectLister): (req: IncomingMessage, res: ServerResponse, path: string) => void {
+export function createMessageRoutes(
+  registry: MessageRegistry,
+  listFiles?: ProjectLister,
+  /** O depósito dos anexos das mensagens (o mesmo do registro); sem ele, a caixa não aceita anexos. */
+  attachments?: AttachmentStore,
+): (req: IncomingMessage, res: ServerResponse, path: string) => void {
+  const attach = async (req: IncomingMessage, res: ServerResponse) => {
+    if (!attachments) return sendJson(res, 403, { error: tr('anexos desligados') });
+    const a = parseAttachment(await readJson(req, ATTACHMENT_BODY_MAX));
+    if ('error' in a) return sendJson(res, 400, { error: a.error });
+    const r = attachments.put(a);
+    if ('error' in r) return sendJson(res, 429, { error: r.error });
+    sendJson(res, 201, { id: r.id, name: a.name, size: a.data.length });
+  };
+
   const files = async (req: IncomingMessage, res: ServerResponse, agentId: string) => {
     const root = registry.projectOf(agentId);
     if (!root) return sendJson(res, 404, { error: tr('agente desconhecido: ele já saiu do escritório?') });
@@ -94,6 +114,7 @@ export function createMessageRoutes(registry: MessageRegistry, listFiles?: Proje
 
   return (req, res, path) => {
     if (path === '/api/messages') return post(req, res, send);
+    if (path === '/api/messages/attachments') return post(req, res, attach);
     if (path === '/api/mod/inbox') return post(req, res, inbox);
     if (path === '/api/mod/inbox/ack') return post(req, res, ack);
     if (path === '/api/codex/bridge/poll') return post(req, res, codexPoll);

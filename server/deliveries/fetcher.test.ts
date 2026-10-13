@@ -87,4 +87,35 @@ describe('FileFetcher', () => {
     f.ack({ results: [{ id: req.id, ok: false, error: 'fora das pastas de projeto conhecidas' }] });
     expect(await other).toEqual({ error: 'fora das pastas de projeto conhecidas', status: 404 });
   });
+
+  it('anexos de uma mensagem, Docker: vão ao auxiliar em base64 (write: true) e voltam os caminhos, um por arquivo', async () => {
+    const files = [
+      { name: 'tela.png', type: 'image/png', data: Buffer.from('png') },
+      { name: 'notas.txt', type: 'text/plain', data: Buffer.from('oi') },
+    ];
+    const f = new FileFetcher({ mapHostPath: () => undefined });
+    expect(await f.write('m-1', files)).toEqual({ error: expect.stringMatching(/codex:bridge/) });
+    f.poll();
+    const pending = f.write('m-1', files);
+    const [req] = f.poll();
+    expect(req).toEqual({
+      id: expect.stringMatching(/^m-1:/),
+      path: '',
+      write: true,
+      files: [
+        { name: 'tela.png', type: 'image/png', data: Buffer.from('png').toString('base64') },
+        { name: 'notas.txt', type: 'text/plain', data: Buffer.from('oi').toString('base64') },
+      ],
+    });
+    f.ack({ results: [{ id: req.id, ok: true, paths: ['/home/u/.habblaud/attachments/x/tela.png', '/home/u/.habblaud/attachments/x/notas.txt'] }] });
+    expect(await pending).toEqual(['/home/u/.habblaud/attachments/x/tela.png', '/home/u/.habblaud/attachments/x/notas.txt']);
+
+    // Caminhos a menos, relativos ou recusa: erro, nunca uma lista pela metade.
+    for (const result of [{ ok: true, paths: ['/a/tela.png'] }, { ok: true, paths: ['tela.png', 'notas.txt'] }, { ok: false, error: 'anexo ilegível' }]) {
+      const again = f.write('m-2', files);
+      const [r] = f.poll();
+      f.ack({ results: [{ id: r.id, ...result }] });
+      expect(await again).toHaveProperty('error');
+    }
+  });
 });

@@ -1,8 +1,8 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../test/fixtures';
-import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_SPAWN, AttachmentStore, parseAttachment, promptWithAttachments, safeFileName, writeAttachments } from './attachments';
+import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_KEEP_MS, ATTACHMENTS_PER_SPAWN, AttachmentStore, messageWithAttachments, parseAttachment, promptWithAttachments, pruneAttachments, safeFileName, writeAttachments } from './attachments';
 
 const b64 = (s: string) => Buffer.from(s).toString('base64');
 
@@ -80,5 +80,37 @@ describe('anexos do Novo agente', () => {
     expect(store.put(file(6))).toHaveProperty('error');
     store.release(6);
     expect(store.put(file(6))).toEqual({ id: 'a2' });
+  });
+});
+
+describe('anexos das mensagens', () => {
+  it('messageWithAttachments: os caminhos no fim do texto (ou sozinhos, sem texto)', () => {
+    expect(messageWithAttachments('oi', [])).toBe('oi');
+    expect(messageWithAttachments('olha  \n', ['/a/x.png'])).toBe('olha\n\nAnexo enviado pelo Habblaud:\n- /a/x.png');
+    expect(messageWithAttachments('  ', ['/a/x.png', '/a/y.txt'])).toBe('Anexos enviados pelo Habblaud:\n- /a/x.png\n- /a/y.txt');
+  });
+
+  it('pruneAttachments: apaga só as pastas de anexos antigas (pelo nome), e nada mais', () => {
+    const tmp = tempDir();
+    try {
+      const old = Date.now() - ATTACHMENTS_KEEP_MS - 60_000;
+      const mk = (name: string, at?: number) => {
+        const dir = join(tmp.dir, name);
+        mkdirSync(dir);
+        writeFileSync(join(dir, 'a.txt'), 'x');
+        if (at) utimesSync(dir, at / 1000, at / 1000);
+      };
+      mk('20260101-101010-m-abc123', old);
+      mk('20261013-101010-m-novo12');
+      mk('minha-pasta', old);
+      mk('20260101-101010-nome-comprido-demais', old);
+      writeFileSync(join(tmp.dir, '20260101-101010-arquivo'), 'x');
+      utimesSync(join(tmp.dir, '20260101-101010-arquivo'), old / 1000, old / 1000);
+      expect(pruneAttachments(tmp.dir)).toBe(1);
+      expect(readdirSync(tmp.dir).sort()).toEqual(['20260101-101010-arquivo', '20260101-101010-nome-comprido-demais', '20261013-101010-m-novo12', 'minha-pasta']);
+      expect(pruneAttachments(join(tmp.dir, 'nao-existe'))).toBe(0);
+    } finally {
+      tmp.cleanup();
+    }
   });
 });

@@ -42,7 +42,7 @@ import { UpdateChecker } from './updates/checker';
 import { tr } from '../shared/i18n';
 import { createCliRunner, createOpener, SpawnService } from './spawn/spawn';
 import { runnableClaudeBin } from './claude-bin';
-import { AttachmentStore } from './spawn/attachments';
+import { AttachmentStore, attachmentsRoot, pruneAttachments, writeAttachments } from './spawn/attachments';
 import { recentFolders } from './spawn/folders';
 import { isDemoId } from '../shared/timeline';
 import { DictationService } from './dictation/dictation';
@@ -202,9 +202,24 @@ const whisper = config.messages && !config.inDocker ? findWhisper() : undefined;
 const dictation = config.messages
   ? new DictationService(whisper && !('missing' in whisper) ? { transcriber: createWhisperTranscriber(whisper) } : {})
   : undefined;
+// Anexos das mensagens (imagens e arquivos colados ou arrastados na caixa): gravados no computador da sessão, em
+// ~/.habblaud/attachments/, e a mensagem leva os caminhos. No Node o servidor grava; no Docker, o auxiliar do host.
+const messageFiles = config.messages && (!config.inDocker || deliveryFiles) ? new AttachmentStore() : undefined;
 const messages = config.messages
   ? new MessageRegistry({
       office,
+      attachments: messageFiles
+        ? {
+            store: messageFiles,
+            write: config.inDocker
+              ? (id, files) => deliveryFiles!.write(id, files)
+              : async (id, files) => {
+                  const root = attachmentsRoot();
+                  pruneAttachments(root);
+                  return writeAttachments(root, id, files);
+                },
+          }
+        : undefined,
       demoAgent: (id) => office.demoAgent(id),
       demoDeliver: (id, text) => office.deliverDemoMessage(id, text),
       codex: {
@@ -293,7 +308,7 @@ const api = createApiHandler({
   sessions: history,
   timeline: createTimelineHandler({ dir: timelineDir, recording: !!timeline }),
   permissions: permissions ? createPermissionRoutes(permissions) : undefined,
-  messages: messages ? createMessageRoutes(messages, deliveryFiles ? (root) => deliveryFiles.list(root) : undefined) : undefined,
+  messages: messages ? createMessageRoutes(messages, deliveryFiles ? (root) => deliveryFiles.list(root) : undefined, messageFiles) : undefined,
   pty: ptys ? createPtyRoutes(ptys) : undefined,
   spawn,
   attachments,

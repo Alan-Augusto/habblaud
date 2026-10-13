@@ -5,12 +5,15 @@
 // Pelo mesmo caminho vai a lista de arquivos de um projeto (o `@` da caixa de mensagem, deliveries/project-files.ts):
 // o servidor lista no modo Node; no Docker, o pedido sai na mesma rodada com `list: true` e o auxiliar devolve os
 // caminhos. A lista de cada projeto vale LIST_FRESH_MS.
+// E, no Docker, os anexos de uma mensagem da caixa (spawn/attachments.ts): o pedido sai com `write: true` e os
+// arquivos em base64, o auxiliar os grava em ~/.habblaud/attachments/ e devolve os caminhos.
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { tr } from '../../shared/i18n';
 import { HostWait, pollWithWait } from '../host-wait';
 import { checkFile, DELIVERY_FILE_MAX_BYTES } from './files';
 import { listProjectFiles, looksSecret, PROJECT_FILES_MAX, type ProjectFiles } from './project-files';
+import type { Attachment } from '../spawn/attachments';
 
 export const HOST_PRESENCE_MS = 10_000;
 export const WAIT_MS = 20_000;
@@ -24,11 +27,25 @@ const LIST_PATH_MAX = 1_024;
 export type FetchResult = { data: Buffer } | { error: string; status: number };
 export type ListResult = ProjectFiles | { error: string; status: number };
 
-/** Um pedido da rodada do auxiliar: um arquivo para ler ou, com `list`, uma pasta de projeto para listar. */
+/**
+ * Um pedido da rodada do auxiliar: um arquivo para ler; com `list`, uma pasta de projeto para listar; com `write`, os
+ * anexos de uma mensagem para gravar (`files`, em base64; `path` vai vazio).
+ */
 export interface HostFileRequest {
   id: string;
   path: string;
   list?: true;
+  write?: true;
+  files?: Array<{ name: string; type: string; data: string }>;
+}
+
+export type WriteResult = string[] | { error: string };
+
+interface PendingWrite {
+  id: string;
+  files: readonly Attachment[];
+  sent: boolean;
+  done: (r: WriteResult) => void;
 }
 
 interface PendingList {
@@ -63,6 +80,7 @@ export class FileFetcher {
   private readonly pending = new Map<string, Pending>();
   private readonly lists = new Map<string, { at: number; value: ProjectFiles }>();
   private readonly pendingLists = new Map<string, PendingList>();
+  private readonly pendingWrites = new Map<string, PendingWrite>();
   /** Listagem em andamento por projeto: quem pede de novo no meio espera a mesma. */
   private readonly listing = new Map<string, Promise<ListResult>>();
   private readonly host: HostWait;
@@ -143,6 +161,23 @@ export class FileFetcher {
     });
   }
 
+  /**
+   * Grava os anexos de uma mensagem no computador (Docker: pelo auxiliar do host) e devolve os caminhos, na ordem.
+   * `id` identifica a mensagem (vira parte do nome da pasta).
+   */
+  write(id: string, files: readonly Attachment[]): Promise<WriteResult> {
+    if (!this.hostAvailable()) return Promise.resolve({ error: tr('o auxiliar do computador (npm run codex:bridge) não está rodando') });
+    if (this.pendingWrites.size >= MAX_PENDING) return Promise.resolve({ error: tr('arquivos demais sendo buscados: tente de novo') });
+    return new Promise<WriteResult>((done) => {
+      const p: PendingWrite = { id: `${id}:${randomUUID()}`, files, sent: false, done };
+      this.pendingWrites.set(p.id, p);
+      this.host.wake();
+      setTimeout(() => {
+        if (this.pendingWrites.delete(p.id)) done({ error: tr('o computador não respondeu a tempo') });
+      }, WAIT_MS).unref?.();
+    });
+  }
+
   /** Rodada do auxiliar: marca presença e entrega os caminhos pedidos (arquivos para ler e pastas para listar). */
   poll(): HostFileRequest[] {
     this.host.seen();
@@ -156,6 +191,11 @@ export class FileFetcher {
       if (p.sent) continue;
       p.sent = true;
       out.push({ id: p.id, path: p.root, list: true });
+    }
+    for (const p of this.pendingWrites.values()) {
+      if (p.sent) continue;
+      p.sent = true;
+      out.push({ id: p.id, path: '', write: true, files: p.files.map((f) => ({ name: f.name, type: f.type, data: f.data.toString('base64') })) });
     }
     return out;
   }
@@ -178,6 +218,14 @@ export class FileFetcher {
           const all = x.files.filter((f): f is string => typeof f === 'string' && !!f && f.length <= LIST_PATH_MAX && !f.startsWith('/') && !f.includes('\0') && !looksSecret(f));
           listed.done({ files: all.slice(0, PROJECT_FILES_MAX), truncated: x.truncated === true || all.length > PROJECT_FILES_MAX });
         } else listed.done({ error: typeof x.error === 'string' && x.error ? x.error.slice(0, 200) : tr('o computador não listou a pasta'), status: 404 });
+        continue;
+      }
+      const written = typeof x.id === 'string' ? this.pendingWrites.get(x.id) : undefined;
+      if (written) {
+        this.pendingWrites.delete(written.id);
+        const paths = x.ok === true && Array.isArray(x.paths) ? x.paths.filter((f): f is string => typeof f === 'string' && f.startsWith('/') && f.length <= LIST_PATH_MAX && !f.includes('\0')) : [];
+        if (paths.length && paths.length === written.files.length) written.done(paths);
+        else written.done({ error: typeof x.error === 'string' && x.error ? x.error.slice(0, 200) : tr('o computador não gravou os anexos') });
         continue;
       }
       const p = typeof x.id === 'string' ? this.pending.get(x.id) : undefined;

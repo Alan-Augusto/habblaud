@@ -4,13 +4,17 @@
 // (scripts/codex-bridge.ts) no Docker. Os arquivos chegam como JSON base64 (o guard exige JSON em todo POST: CSRF).
 // Node puro e sem dependências: também é importado pelo auxiliar do host (via tsx).
 import { randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { tr } from '../../shared/i18n';
 
 export const ATTACHMENT_MAX_BYTES = 15 * 1024 * 1024;
 export const ATTACHMENTS_PER_SPAWN = 8;
+/** Anexos por mensagem mandada pela caixa de mensagem do escritório. */
+export const ATTACHMENTS_PER_MESSAGE = 5;
+/** Pastas de anexos mais velhas que isto são apagadas quando chegam anexos novos de uma mensagem. */
+export const ATTACHMENTS_KEEP_MS = 7 * 24 * 60 * 60_000;
 /** Corpo de POST /api/spawn/attachments: o arquivo em base64 (4/3) e um pouco de folga para o JSON. */
 export const ATTACHMENT_BODY_MAX = Math.ceil((ATTACHMENT_MAX_BYTES * 4) / 3) + 64 * 1024;
 /** Anexos enviados e ainda não usados expiram; o total guardado em memória tem teto. */
@@ -144,4 +148,42 @@ export function promptWithAttachments(prompt: string, paths: readonly string[]):
   const list = paths.map((p) => `- ${p}`).join('\n');
   const head = paths.length === 1 ? tr('Anexo enviado pelo Habblaud (leia antes de começar):') : tr('Anexos enviados pelo Habblaud (leia antes de começar):');
   return `${prompt.trim() ? `${prompt.trimEnd()}\n\n` : ''}${head}\n${list}`;
+}
+
+/** A mensagem da caixa do escritório com a lista dos anexos no fim (o agente lê os arquivos pelos caminhos). */
+export function messageWithAttachments(text: string, paths: readonly string[]): string {
+  if (!paths.length) return text;
+  const list = paths.map((p) => `- ${p}`).join('\n');
+  const head = paths.length === 1 ? tr('Anexo enviado pelo Habblaud:') : tr('Anexos enviados pelo Habblaud:');
+  return `${text.trim() ? `${text.trimEnd()}\n\n` : ''}${head}\n${list}`;
+}
+
+/** Nome das pastas que writeAttachments cria: só essas são apagadas. */
+const ATTACHMENT_DIR = /^\d{8}-\d{6}-[\w-]{1,8}$/;
+
+/**
+ * Apaga as pastas de anexos (as criadas por writeAttachments, pelo nome) que não mudam há mais de `keepMs`. Nada fora
+ * de `root`, nada com outro nome. Devolve quantas apagou. Nunca lança.
+ */
+export function pruneAttachments(root: string, now = Date.now(), keepMs = ATTACHMENTS_KEEP_MS): number {
+  let removed = 0;
+  let names: string[];
+  try {
+    names = readdirSync(root);
+  } catch {
+    return 0;
+  }
+  for (const name of names) {
+    if (!ATTACHMENT_DIR.test(name)) continue;
+    const dir = join(root, name);
+    try {
+      const st = statSync(dir);
+      if (!st.isDirectory() || now - st.mtimeMs < keepMs) continue;
+      rmSync(dir, { recursive: true, force: true });
+      removed++;
+    } catch {
+      // some no caminho: fica para a próxima
+    }
+  }
+  return removed;
 }
