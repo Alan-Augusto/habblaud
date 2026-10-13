@@ -379,6 +379,26 @@ próprio computador** (o padrão) e só abre por `http://localhost` ou `http://1
 (`HABBLAUD_BIND=0.0.0.0` ou `HABBLAUD_HOST=0.0.0.0`), ele fica desligado. Detalhes em
 [Privacidade e segurança](#privacidade-e-segurança).
 
+### Terminal interativo (assumir, nova sessão e encerrar)
+
+Rodando com `npm start` (fora do Docker), a janela de terminal de cada agente principal é interativa: o botão
+**Abrir terminal** da gaveta, o atalho ao lado de cada agente na lista lateral ou a tecla `T` abrem a mesma janela,
+com abas para os outros agentes do mesmo projeto.
+
+- Sessão aberta aqui: é o Claude Code de verdade (digitar, responder; Esc interrompe o agente, como no terminal).
+- Sessão aberta noutro terminal: **Assumir daqui** (no topo da janela) encerra a sessão lá e continua a **mesma
+  conversa** aqui (`claude --resume <sessão>`, na mesma pasta e conta). O personagem mantém o nome. No Windows, o
+  terminal de onde a sessão saiu volta ao normal (o Habblaud desliga os modos de mouse/teclado que o Claude ligou).
+- **Encerrar** fecha a sessão, esteja ela aqui ou noutro terminal (a conversa fica salva).
+- **Nova sessão** (na gaveta da sala) abre um Claude Code novo na pasta do projeto.
+
+Assumir e encerrar pedem um segundo clique; fechar a janela não encerra a sessão. A janela (e a gaveta do
+agente) pode ser arrastada pela barra e redimensionada pelo canto; duplo clique na barra devolve ao lugar.
+**Vem desligado:** ligue com `HABBLAUD_PTY=1` (leia antes o aviso em [Privacidade e segurança](#privacidade-e-segurança)).
+Usa o `node-pty`, o `@xterm/headless` (dependências opcionais) e o `claude` do PATH (`HABBLAUD_CLAUDE_BIN` para
+outro); só aceita pedidos do próprio computador. **Reiniciar o Habblaud encerra as sessões abertas por ele.**
+O terminal ao vivo continua no histórico de sessões, para subagentes e quando o interativo está desligado.
+
 ### Timelapse do dia
 
 O botão **Timelapse** (relógio com a seta de voltar, ou a tecla `L`) reproduz o dia em alta velocidade: salas
@@ -608,6 +628,8 @@ Tudo funciona sem configurar nada. Se precisar ajustar, use variáveis de ambien
 | `HABBLAUD_DEMO` | desligado | `1` liga o modo demonstração ao iniciar. |
 | `HABBLAUD_ALLOWED_HOSTS` | — | Nomes extras aceitos no endereço (ex.: `meu-mac.local`), além de `localhost` e IPs. |
 | `HABBLAUD_TERMINAL` | ligado (só com acesso local) | `0` desliga o terminal, responder e mandar mensagens pelo escritório e o editor de personagem. Com a porta exposta eles já ficam desligados, sem opção de ligar. |
+| `HABBLAUD_PTY` | desligado | `1` liga o terminal interativo (abrir, assumir e encerrar sessões do Claude Code pelo escritório). Só com acesso local e fora do Docker; leia o aviso em [Privacidade e segurança](#privacidade-e-segurança). |
+| `HABBLAUD_CLAUDE_BIN` | `claude` do PATH | O executável do Claude Code que o terminal interativo abre. |
 | `HABBLAUD_MENSAGENS` | ligado (com o terminal) | `0` desliga só as mensagens pelo escritório (a caixa no terminal e nos detalhes do agente). |
 | `HABBLAUD_CODEX` | ligado | `0` desliga o Codex no escritório. |
 | `HABBLAUD_CODEX_DIRS` | detecção automática | Pastas do Codex, separadas por vírgula (no lugar de `~/.codex*` e `CODEX_HOME`). |
@@ -750,6 +772,14 @@ das contas (letra, e-mail, organização) são lidos no host pelo `docker:up` e 
   que tenha o plugin. Se isso não serve para você (computador compartilhado, agentes rodando sem supervisão), não
   instale o plugin (`npm run mod:install -- --sem-mensagens`) ou desligue com `HABBLAUD_MENSAGENS=0`. O texto das
   mensagens não é gravado: some do servidor assim que é entregue.
+- **Terminal interativo, opt-in — e com um aviso:** com `HABBLAUD_PTY=1`, o escritório abre o Claude Code em
+  qualquer pasta, digita nele (inclusive `!comando`, que roda no shell) e encerra ou assume sessões abertas noutros
+  terminais. Segue a mesma trava do terminal (bind local, `Host` local, nada de proxies ou túneis) e cada pedido
+  precisa vir do próprio computador, com origem local (um site aberto no navegador não consegue mandar). Mesmo assim,
+  **qualquer programa desta máquina** que fale com `http://localhost:4747` — inclusive um agente rodando um comando —
+  ganha esse poder. Antes de encerrar um processo de fora, o Habblaud confere no registro de sessões e no sistema que
+  aquele PID ainda é aquele Claude Code (mesmo início e executável). Em computadores compartilhados ou com agentes
+  rodando sem supervisão, deixe desligado.
 - **Editor de personagem, só local:** salvar ou voltar ao sorteio muda o escritório e grava em `names.json`, então
   segue a mesma trava do terminal (bind local, `Host` local, nada de proxies ou túneis): sem ela, o lápis não aparece
   e o servidor responde `403`. As mudanças exigem JSON e origem local. `HABBLAUD_TERMINAL=0` desliga junto.

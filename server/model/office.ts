@@ -15,6 +15,8 @@ import type {
   PermissionDecision,
   PermissionRequestInfo,
   Provider,
+  PtyInfo,
+  PtyStatus,
   RoomInfo,
   ShellJob,
   SourceInfo,
@@ -72,6 +74,8 @@ export interface OfficeDeps {
   messages?: () => ReadonlySet<string>;
   /** Verificação de versão nova no GitHub (ver OfficeSnapshot.meta.updates). */
   updates?: () => UpdateStatus;
+  /** Terminais interativos (PtyManager): estado do recurso e os abertos. */
+  ptys?: () => { status: PtyStatus; list: PtyInfo[] };
   now?: () => number;
 }
 
@@ -317,7 +321,9 @@ export class Office {
     const roomId = normalizeCwd(p.cwd);
     this.ensureRoom(roomId, now);
     const chosen = this.roomCharacter(roomId, p.id, p.sessionId);
-    const person = chosen ?? this.deps.names.assign(p.sessionId, this.takenNames());
+    // A mesma sessão retomada noutro processo (ex.: "Assumir aqui") mantém o nome, mesmo com o processo antigo
+    // ainda saindo do escritório.
+    const person = chosen ?? this.deps.names.assign(p.sessionId, this.takenNames(undefined, p.sessionId));
     const info: AgentInfo = {
       id: p.id,
       kind: 'main',
@@ -975,12 +981,14 @@ export class Office {
     const trim = (a: AgentInfo): AgentInfo => (a.recent.length > SNAPSHOT_RECENT ? { ...a, recent: a.recent.slice(-SNAPSHOT_RECENT) } : a);
     const sessions = new Map<string, number>();
     for (const a of real) if (a.kind === 'main' && a.status !== 'offline') sessions.set(a.account, (sessions.get(a.account) ?? 0) + 1);
+    const ptys = this.deps.ptys?.();
     return {
       rev: this.rev,
       serverTime: now,
       rooms,
       agents: [...real, ...demoAgents].map(trim),
       accounts: [...this.deps.accounts(sessions), ...(this.demoSnap?.accounts ?? [])],
+      ...(ptys ? { ptys: ptys.list } : {}),
       meta: {
         demo: this.isDemo(),
         sources: this.deps.sources(),
@@ -989,15 +997,22 @@ export class Office {
         build: this.deps.build?.(),
         terminal: this.deps.terminal === true,
         messages: this.deps.messages !== undefined,
+        ...(ptys ? { pty: ptys.status } : {}),
         updates: this.deps.updates?.(),
       },
     };
   }
 
-  /** Nomes que o sorteio não pode dar: os de quem está no escritório (menos `exceptId`) e os escolhidos para as salas. */
-  private takenNames(exceptId?: string): Set<string> {
+  /**
+   * Nomes que o sorteio não pode dar: os de quem está no escritório (menos `exceptId` e os agentes principais da sessão
+   * `exceptSession`) e os escolhidos para as salas.
+   */
+  private takenNames(exceptId?: string, exceptSession?: string): Set<string> {
     const used = new NameSet();
-    for (const r of this.agents.values()) if (r.info.id !== exceptId) used.add(r.info.name);
+    for (const r of this.agents.values()) {
+      if (r.info.id === exceptId || (exceptSession && r.info.kind === 'main' && r.info.sessionId === exceptSession)) continue;
+      used.add(r.info.name);
+    }
     for (const a of this.demoSnap?.agents ?? []) used.add(a.name);
     for (const n of this.deps.names.reservedNames().keys()) used.add(n);
     return used;

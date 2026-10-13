@@ -44,6 +44,11 @@ export interface ApiDeps {
    */
   messages?: (req: IncomingMessage, res: ServerResponse, path: string) => void;
   /**
+   * Terminal interativo e ações nos agentes (/api/pty/*, POST /api/agents/:id/stop|takeover; http/pty.ts).
+   * Ausente = desligado (sem HABBLAUD_PTY=1, Docker, sem node-pty ou sem bind local).
+   */
+  pty?: (req: IncomingMessage, res: ServerResponse, path: string) => void;
+  /**
    * Fonte do Codex ao vivo: recebe os eventos dos hooks do Codex (POST /api/codex/events, server/codex/http.ts). Sem
    * ela a rota responde {ok: false}. Só com Host local e, fora do Docker, conexão pelo loopback (os eventos só observam:
    * não dependem da trava do terminal).
@@ -62,6 +67,8 @@ export interface ApiDeps {
 
 /** GET /api/agents/:id/terminal (ids nunca contêm '/'). */
 const TERMINAL_ROUTE = /^\/api\/agents\/([^/]+)\/terminal$/;
+/** POST /api/agents/:id/stop|takeover (terminal interativo). */
+const AGENT_ACTION_ROUTE = /^\/api\/agents\/[^/]+\/(stop|takeover)$/;
 
 /** PUT|DELETE /api/agents/:id/character: personagem do projeto (ver Office.setCharacter). */
 const CHARACTER_ROUTE = /^\/api\/agents\/([^/]+)\/character$/;
@@ -255,6 +262,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           docker: deps.inDocker,
           terminal: !!terminals,
           permissions: !!deps.permissions,
+          pty: !!deps.pty,
           messages: !!deps.messages,
           codexEvents: !!deps.codexLive,
           updates: updatesSummary(deps.updates?.status()),
@@ -309,6 +317,11 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       } else {
         deps.permissions(req, res, path);
       }
+      return true;
+    }
+    if (path === '/api/pty' || path.startsWith('/api/pty/') || AGENT_ACTION_ROUTE.test(path)) {
+      if (!deps.pty) sendJson(res, 403, { error: 'terminal interativo desligado (veja o log do servidor)' });
+      else deps.pty(req, res, path);
       return true;
     }
     const characterMatch = CHARACTER_ROUTE.exec(path);
