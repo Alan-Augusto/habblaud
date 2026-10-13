@@ -210,7 +210,16 @@ export class TimelapsePlayer implements UiComponent {
     );
     this.vignette = h('div', { class: 'ui-lapse-vignette', hidden: true, attrs: { 'aria-hidden': 'true' } });
 
-    if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.drawChart(true)).observe(this.track);
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(() => this.drawChart(true)).observe(this.track);
+      new ResizeObserver(() => this.syncHeight()).observe(this.el);
+    }
+  }
+
+  /** Altura da barra para os avisos (.ui-toasts) ficarem acima dela durante o replay; 0 com a barra fechada. */
+  private syncHeight(): void {
+    const h = this.open ? Math.round(this.el.getBoundingClientRect().height) : 0;
+    this.ctx.root.style.setProperty('--lapse-h', `${h}px`);
   }
 
   get isOpen(): boolean {
@@ -284,6 +293,7 @@ export class TimelapsePlayer implements UiComponent {
 
   render(): void {
     setHidden(this.el, !this.open);
+    this.syncHeight();
     const on = this.active;
     setHidden(this.badge, !on);
     setHidden(this.vignette, !on);

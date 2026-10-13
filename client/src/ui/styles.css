@@ -2543,6 +2543,12 @@
     visibility 0s linear 0.15s;
 }
 
+/* Durante o replay os avisos ficam acima da barra de reprodução (a altura dela vem de ui/timelapse.ts), em vez de
+   cobrir a linha do tempo e os botões. */
+.ui-root.is-replay .ui-toasts {
+  bottom: calc(var(--free-bottom) + var(--lapse-h, 0px) + 10px);
+}
+
 .ui-toast {
   --lvl: var(--ui-accent);
   pointer-events: auto;
