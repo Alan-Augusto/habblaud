@@ -42,6 +42,7 @@ do meio (0.**3**.0).
 - No timelapse, a linha do tempo do agente deixa de mostrar o que aconteceu depois do momento reproduzido quando se volta no tempo. Uma resposta de histórico que ainda estava a caminho também não entra durante o replay.
 - No timelapse, os tempos dos painéis acompanham a reprodução e ficam parados ao pausar, junto com o escritório e o selo do replay.
 - O feed pausado guarda só os 50 eventos mais recentes e libera os dados de sessões antigas, mantendo a contagem de novidades.
+- No timelapse, as setas no controle de velocidade passam a trocar a velocidade, em vez de mover a câmera do escritório.
 
 ## [0.8.0] - 2026-10-09
 
